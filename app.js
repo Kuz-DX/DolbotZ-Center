@@ -628,7 +628,7 @@
       if (percentage <= 1.01) percentage *= 100;
       percentage = Math.max(0, Math.min(100, percentage));
       $("batteryPercentage").textContent = `${percentage.toFixed(0)}%`;
-      $("batteryGauge").style.setProperty("--battery", `${percentage * 3.6}deg`);
+      $("batteryGauge").style.setProperty("--battery", `${percentage}%`);
     }
 
     const voltage = Number(message?.voltage);
@@ -1246,7 +1246,7 @@
     $("batteryPercentage").textContent = "84%";
     $("batteryVoltage").textContent = "48.7 V";
     $("batteryCurrent").textContent = "6.2 A";
-    $("batteryGauge").style.setProperty("--battery", `${84 * 3.6}deg`);
+    $("batteryGauge").style.setProperty("--battery", "84%");
     $("missionStatus").textContent = "PATROL / DEMO";
     dom.overallHealth.textContent = "98%";
 
@@ -1433,7 +1433,7 @@
     $("batteryPercentage").textContent = "--%";
     $("batteryVoltage").textContent = "-- V";
     $("batteryCurrent").textContent = "-- A";
-    $("batteryGauge").style.setProperty("--battery", "0deg");
+    $("batteryGauge").style.setProperty("--battery", "0%");
     $("missionStatus").textContent = "MISSION STANDBY";
 
     updateStatusCard("robotConnectedCard", "robotConnectedValue", "미수신", "unknown");

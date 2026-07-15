@@ -331,7 +331,7 @@ button {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(430px, 1.3fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(280px, 1fr) minmax(430px, 1.3fr) minmax(280px, 1fr);
   grid-template-rows: minmax(245px, 34vh) minmax(220px, 30vh) minmax(165px, 30vh);
   grid-template-areas:
     "cam1 main cam2"
@@ -627,38 +627,47 @@ button {
 }
 
 .battery-gauge {
+  position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: conic-gradient(var(--accent) var(--battery), rgba(113, 128, 134, 0.18) 0);
+  width: 126px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid rgba(168, 189, 99, 0.38);
+  border-radius: 10px;
+  background: rgba(113, 128, 134, 0.18);
 }
 
 .battery-gauge::before {
   content: "";
-  grid-area: 1 / 1;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: #27291b;
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 0;
+  width: var(--battery);
+  background: var(--accent);
+  transition: width 0.25s ease;
 }
 
 .battery-gauge div {
+  position: relative;
   z-index: 1;
-  grid-area: 1 / 1;
-  display: grid;
-  justify-items: center;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 .battery-gauge strong {
+  color: #fff;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
 }
 
 .battery-gauge span {
-  color: var(--muted);
-  font-size: 0.48rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.5rem;
 }
 
 .status-cards {
@@ -1638,11 +1647,12 @@ body::before {
 }
 
 .battery-gauge {
-  background: conic-gradient(#4da3ff var(--battery), #263442 0);
+  border-color: #34506a;
+  background: #263442;
 }
 
 .battery-gauge::before {
-  background: var(--panel);
+  background: #4da3ff;
 }
 
 .status-card {
