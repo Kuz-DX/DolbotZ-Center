@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title description">
+  <title id="title">팀 로고 임시 이미지</title>
+  <desc id="description">파란색 육각형과 T 문자를 사용한 팀 로고 자리 표시자</desc>
+  <rect width="96" height="96" fill="#0a1118"/>
+  <path d="M48 10 79 28v40L48 86 17 68V28z" fill="none" stroke="#4da3ff" stroke-width="4"/>
+  <path d="M29 31h38v10H53v28H43V41H29z" fill="#e7eef5"/>
+  <circle cx="76" cy="20" r="5" fill="#43cf9a"/>
+</svg>

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>DOLBOT CENTER | 국방로봇 모니터링</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <img
+          class="team-logo"
+          src="./assets/team-logo-placeholder.svg"
+          alt="팀 로고 임시 이미지"
+        />
+        <div>
+          <p class="eyebrow">DEFENSE ROBOT MONITORING SYSTEM</p>
+          <h1>DOLBOT CENTER</h1>
+        </div>
+      </div>
+
+      <div class="bridge-controls">
+        <label class="bridge-field">
+          <span>ROSBRIDGE</span>
+          <input id="rosbridgeUrl" type="text" value="ws://localhost:9090" spellcheck="false" />
+        </label>
+        <button id="connectButton" class="button button--primary" type="button">연결</button>
+        <button id="disconnectButton" class="button" type="button" disabled>해제</button>
+        <label class="switch" title="실제 ROS 데이터 대신 명시적으로 데모 데이터를 표시합니다.">
+          <input id="demoToggle" type="checkbox" />
+          <span class="switch-track"></span>
+          <span>DEMO</span>
+        </label>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="토픽 설정 열기">⚙</button>
+      </div>
+
+      <div class="system-summary">
+        <div id="systemClock" class="system-clock">--:--:--</div>
+        <div id="connectionBadge" class="connection-badge connection-badge--offline">
+          <span class="pulse-dot"></span>
+          <span id="connectionText">DISCONNECTED</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-grid">
+      <section class="panel camera-panel grid-cam-1" data-topic-key="subCamera1">
+        <div class="panel-heading">
+          <div>
+            <p>AUXILIARY VISION / 01</p>
+            <h2>SUB CAMERA 1</h2>
+          </div>
+          <div class="panel-tools">
+            <span id="subCamera1Rate" class="rate-badge">0.0 Hz</span>
+            <button class="fullscreen-button" data-fullscreen-target="subCamera1Stage" type="button">⛶</button>
+          </div>
+        </div>
+        <div id="subCamera1Stage" class="camera-stage">
+          <img id="subCamera1Image" alt="서브 카메라 1 영상" />
+          <div class="signal-placeholder">
+            <span class="signal-icon"></span>
+            <strong>NO SIGNAL</strong>
+            <small id="subCamera1TopicLabel">/camera/sub1/image/compressed</small>
+          </div>
+          <div class="camera-reticle" aria-hidden="true"></div>
+          <div class="camera-footer">
+            <span>FRONT-LEFT</span>
+            <span id="subCamera1Age">대기 중</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel camera-panel grid-main-camera" data-topic-key="mainCamera">
+        <div class="panel-heading">
+          <div>
+            <p>PRIMARY VISION</p>
+            <h2>MAIN CAMERA</h2>
+          </div>
+          <div class="panel-tools">
+            <span id="mainCameraRate" class="rate-badge rate-badge--accent">0.0 Hz</span>
+            <button class="fullscreen-button" data-fullscreen-target="mainCameraStage" type="button">⛶</button>
+          </div>
+        </div>
+        <div id="mainCameraStage" class="camera-stage camera-stage--main">
+          <img id="mainCameraImage" alt="메인 카메라 영상" />
+          <div class="signal-placeholder">
+            <span class="signal-icon"></span>
+            <strong>NO SIGNAL</strong>
+            <small id="mainCameraTopicLabel">/camera/main/image/compressed</small>
+          </div>
+          <div class="camera-reticle camera-reticle--main" aria-hidden="true"></div>
+          <div class="camera-footer">
+            <span>PRIMARY OPTICAL FEED</span>
+            <span id="mainCameraAge">대기 중</span>
+          </div>
+          <div class="camera-hud">
+            <span>AZ <strong id="cameraAzimuth">000.0°</strong></span>
+            <span>EL <strong id="cameraElevation">+00.0°</strong></span>
+            <span>SPD <strong id="hudSpeed">0.00 m/s</strong></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel camera-panel grid-cam-2" data-topic-key="subCamera2">
+        <div class="panel-heading">
+          <div>
+            <p>AUXILIARY VISION / 02</p>
+            <h2>SUB CAMERA 2</h2>
+          </div>
+          <div class="panel-tools">
+            <span id="subCamera2Rate" class="rate-badge">0.0 Hz</span>
+            <button class="fullscreen-button" data-fullscreen-target="subCamera2Stage" type="button">⛶</button>
+          </div>
+        </div>
+        <div id="subCamera2Stage" class="camera-stage">
+          <img id="subCamera2Image" alt="서브 카메라 2 영상" />
+          <div class="signal-placeholder">
+            <span class="signal-icon"></span>
+            <strong>NO SIGNAL</strong>
+            <small id="subCamera2TopicLabel">/camera/sub2/image/compressed</small>
+          </div>
+          <div class="camera-reticle" aria-hidden="true"></div>
+          <div class="camera-footer">
+            <span>FRONT-RIGHT</span>
+            <span id="subCamera2Age">대기 중</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel status-panel grid-status">
+        <div class="panel-heading">
+          <div>
+            <p>PLATFORM / HEALTH</p>
+            <h2>로봇 연결 상태</h2>
+          </div>
+          <span id="overallHealth" class="health-score">--</span>
+        </div>
+
+        <div class="platform-overview">
+          <div class="platform-id">
+            <div class="platform-symbol" aria-hidden="true">⬢</div>
+            <div>
+              <strong>DOLBOT-01</strong>
+              <span id="missionStatus">MISSION STANDBY</span>
+            </div>
+          </div>
+          <div id="batteryGauge" class="battery-gauge" style="--battery: 0deg;">
+            <div>
+              <strong id="batteryPercentage">--%</strong>
+              <span>BATTERY</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-cards">
+          <article id="robotConnectedCard" class="status-card status-card--unknown">
+            <span class="status-led"></span>
+            <div>
+              <small>ROBOT LINK</small>
+              <strong id="robotConnectedValue">미수신</strong>
+            </div>
+          </article>
+          <article id="collisionCard" class="status-card status-card--unknown">
+            <span class="status-led"></span>
+            <div>
+              <small>IMPACT / COLLISION</small>
+              <strong id="collisionValue">미수신</strong>
+            </div>
+          </article>
+          <article id="sensorConnectedCard" class="status-card status-card--unknown">
+            <span class="status-led"></span>
+            <div>
+              <small>SENSOR LINK</small>
+              <strong id="sensorConnectedValue">미수신</strong>
+            </div>
+          </article>
+        </div>
+
+        <div class="telemetry-grid">
+          <div class="telemetry-item">
+            <span>POSITION X</span>
+            <strong id="odomX">-- m</strong>
+          </div>
+          <div class="telemetry-item">
+            <span>POSITION Y</span>
+            <strong id="odomY">-- m</strong>
+          </div>
+          <div class="telemetry-item">
+            <span>YAW</span>
+            <strong id="odomYaw">--°</strong>
+          </div>
+          <div class="telemetry-item">
+            <span>SPEED</span>
+            <strong id="linearSpeed">-- m/s</strong>
+          </div>
+          <div class="telemetry-item">
+            <span>ROLL</span>
+            <strong id="imuRoll">--°</strong>
+          </div>
+          <div class="telemetry-item">
+            <span>PITCH</span>
+            <strong id="imuPitch">--°</strong>
+          </div>
+          <div class="telemetry-item">
+            <span>VOLTAGE</span>
+            <strong id="batteryVoltage">-- V</strong>
+          </div>
+          <div class="telemetry-item">
+            <span>CURRENT</span>
+            <strong id="batteryCurrent">-- A</strong>
+          </div>
+        </div>
+
+        <div class="event-section">
+          <div class="section-title">
+            <span>EVENT LOG</span>
+            <button id="clearLogButton" type="button">CLEAR</button>
+          </div>
+          <ul id="eventLog" class="event-log">
+            <li><time>--:--:--</time><span>시스템 초기화 완료</span></li>
+          </ul>
+        </div>
+      </aside>
+
+      <section class="panel camera-panel grid-arm-camera" data-topic-key="armCamera">
+        <div class="panel-heading">
+          <div>
+            <p>MANIPULATOR VISION</p>
+            <h2>로봇팔 카메라</h2>
+          </div>
+          <div class="panel-tools">
+            <span id="armCameraRate" class="rate-badge">0.0 Hz</span>
+            <button class="fullscreen-button" data-fullscreen-target="armCameraStage" type="button">⛶</button>
+          </div>
+        </div>
+        <div id="armCameraStage" class="camera-stage camera-stage--arm">
+          <img id="armCameraImage" alt="로봇팔 카메라 영상" />
+          <div class="signal-placeholder">
+            <span class="signal-icon"></span>
+            <strong>NO SIGNAL</strong>
+            <small id="armCameraTopicLabel">/camera/robot_arm/image/compressed</small>
+          </div>
+          <div class="camera-reticle" aria-hidden="true"></div>
+          <div class="camera-footer">
+            <span>END-EFFECTOR VIEW</span>
+            <span id="armCameraAge">대기 중</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel path-panel grid-path">
+        <div class="panel-heading">
+          <div>
+            <p>NAVIGATION / PATH</p>
+            <h2>생성된 주행 경로</h2>
+          </div>
+          <div class="panel-tools">
+            <span id="pathFrame" class="rate-badge">FRAME: --</span>
+            <span id="pathRate" class="rate-badge">0.0 Hz</span>
+          </div>
+        </div>
+        <div class="canvas-stage">
+          <canvas id="pathCanvas"></canvas>
+          <div id="pathPlaceholder" class="canvas-placeholder">경로 토픽 대기 중</div>
+          <div class="path-metrics">
+            <span>POSES <strong id="pathPoseCount">0</strong></span>
+            <span>LENGTH <strong id="pathLength">0.0 m</strong></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel arm-kinematics-panel grid-lidar">
+        <div class="panel-heading">
+          <div>
+            <p>MANIPULATOR / FORWARD KINEMATICS</p>
+            <h2>로봇팔 관절 위치</h2>
+          </div>
+          <div class="panel-tools">
+            <span id="jointStatesRate" class="rate-badge rate-badge--accent">0.0 Hz</span>
+          </div>
+        </div>
+
+        <div class="arm-stage">
+          <canvas id="armKinematicsCanvas"></canvas>
+          <div id="armPlaceholder" class="canvas-placeholder">/joint_states 토픽 대기 중</div>
+          <div class="arm-metrics">
+            <span>PLANE <strong>X-Z</strong></span>
+            <span>JOINTS <strong id="armJointCount">0</strong></span>
+            <span>REACH <strong id="armReach">0.00 m</strong></span>
+          </div>
+        </div>
+
+        <div class="joint-state-section">
+          <div class="section-title">
+            <span>JOINT STATE</span>
+            <span id="endEffectorPosition">EE X -- / Z --</span>
+          </div>
+          <div id="jointStateList" class="joint-state-list">
+            <div class="joint-state-empty">관절 데이터 미수신</div>
+          </div>
+        </div>
+
+        <div class="topic-health">
+          <div class="section-title"><span>TOPIC HEALTH</span><span id="activeTopicCount">0 / 14 ACTIVE</span></div>
+          <div id="topicHealthList" class="topic-health-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer-bar">
+      <span>ROS 2 HUMBLE / Ubuntu 22.04</span>
+      <span id="footerMessage">실제 장비 토픽을 수신하기 전까지 값은 생성되지 않습니다.</span>
+      <span>DOLBOT UI v1.2.0</span>
+    </footer>
+  </div>
+
+  <dialog id="settingsDialog" class="settings-dialog">
+    <form method="dialog" class="settings-card">
+      <div class="settings-header">
+        <div>
+          <p>ROS 2 INTERFACE</p>
+          <h2>토픽 설정</h2>
+        </div>
+        <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
+      </div>
+      <p class="settings-description">
+        실제 로봇의 토픽명에 맞춰 수정하십시오. 메시지 타입은 ROS 2 표기법을 사용합니다.
+      </p>
+      <div id="topicSettingsGrid" class="topic-settings-grid"></div>
+
+      <div class="settings-subsection">
+        <div class="settings-subsection-title">
+          <div>
+            <strong>2D 로봇팔 모델</strong>
+            <small>JointState 각도를 X-Z 평면의 직렬 링크로 변환</small>
+          </div>
+        </div>
+        <div id="armModelSettingsGrid" class="arm-model-settings-grid"></div>
+      </div>
+
+      <div class="settings-actions">
+        <button id="resetTopicsButton" class="button" type="button">기본값 복원</button>
+        <button id="saveTopicsButton" class="button button--primary" value="default" type="button">저장 및 재구독</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/roslib@1.4.1/build/roslib.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
