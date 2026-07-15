@@ -1201,7 +1201,7 @@ button {
 
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: 300px 340px 380px 300px;
+    grid-template-rows: 300px 340px 560px 300px;
     grid-template-areas:
       "main main"
       "cam1 cam2"
@@ -1239,7 +1239,7 @@ button {
   }
 
   .status-panel,
-  .arm-kinematics-panel {
+  .path-panel {
     min-height: 680px;
   }
 
@@ -1681,30 +1681,12 @@ body::before {
 }
 
 .arm-kinematics-panel {
-  grid-template-columns: minmax(0, 1.25fr) minmax(180px, 0.75fr);
-  grid-template-rows: 48px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 1fr;
+  grid-template-rows: 48px minmax(0, 1fr);
 }
 
-.arm-kinematics-panel > .panel-heading {
-  grid-column: 1 / -1;
-  grid-row: 1;
-}
-
-.arm-kinematics-panel > .arm-stage {
-  grid-column: 1;
-  grid-row: 2 / 4;
-  border-right: 1px solid var(--line-soft);
-  border-bottom: 0;
-}
-
-.arm-kinematics-panel > .joint-state-section {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.arm-kinematics-panel > .topic-health {
-  grid-column: 2;
-  grid-row: 3;
+.path-panel {
+  grid-template-rows: 48px minmax(255px, 1fr) minmax(105px, auto) minmax(132px, auto);
 }
 
 .footer-bar {
@@ -1835,7 +1817,7 @@ body::before {
 
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: 300px 340px 380px 300px;
+    grid-template-rows: 300px 340px 560px 300px;
     grid-template-areas:
       "main main"
       "cam1 cam2"
@@ -1900,28 +1882,7 @@ body::before {
   }
 
   .status-panel,
-  .arm-kinematics-panel {
+  .path-panel {
     min-height: 680px;
   }
-
-  .arm-kinematics-panel {
-    grid-template-columns: 1fr;
-    grid-template-rows: 48px minmax(255px, 1fr) minmax(105px, auto) minmax(132px, auto);
-  }
-
-  .arm-kinematics-panel > .panel-heading,
-  .arm-kinematics-panel > .arm-stage,
-  .arm-kinematics-panel > .joint-state-section,
-  .arm-kinematics-panel > .topic-health {
-    grid-column: 1;
-  }
-
-  .arm-kinematics-panel > .panel-heading { grid-row: 1; }
-  .arm-kinematics-panel > .arm-stage {
-    grid-row: 2;
-    border-right: 0;
-    border-bottom: 1px solid var(--line-soft);
-  }
-  .arm-kinematics-panel > .joint-state-section { grid-row: 3; }
-  .arm-kinematics-panel > .topic-health { grid-row: 4; }
 }

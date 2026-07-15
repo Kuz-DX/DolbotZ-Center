@@ -271,6 +271,21 @@
             <span>LENGTH <strong id="pathLength">0.0 m</strong></span>
           </div>
         </div>
+
+        <div class="joint-state-section">
+          <div class="section-title">
+            <span>JOINT STATE</span>
+            <span id="endEffectorPosition">EE X -- / Z --</span>
+          </div>
+          <div id="jointStateList" class="joint-state-list">
+            <div class="joint-state-empty">관절 데이터 미수신</div>
+          </div>
+        </div>
+
+        <div class="topic-health">
+          <div class="section-title"><span>TOPIC HEALTH</span><span id="activeTopicCount">0 / 14 ACTIVE</span></div>
+          <div id="topicHealthList" class="topic-health-list"></div>
+        </div>
       </section>
 
       <section class="panel arm-kinematics-panel grid-arm-kinematics">
@@ -292,21 +307,6 @@
             <span>JOINTS <strong id="armJointCount">0</strong></span>
             <span>REACH <strong id="armReach">0.00 m</strong></span>
           </div>
-        </div>
-
-        <div class="joint-state-section">
-          <div class="section-title">
-            <span>JOINT STATE</span>
-            <span id="endEffectorPosition">EE X -- / Z --</span>
-          </div>
-          <div id="jointStateList" class="joint-state-list">
-            <div class="joint-state-empty">관절 데이터 미수신</div>
-          </div>
-        </div>
-
-        <div class="topic-health">
-          <div class="section-title"><span>TOPIC HEALTH</span><span id="activeTopicCount">0 / 14 ACTIVE</span></div>
-          <div id="topicHealthList" class="topic-health-list"></div>
         </div>
       </section>
     </main>
