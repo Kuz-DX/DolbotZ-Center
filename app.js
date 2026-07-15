@@ -58,25 +58,25 @@
     },
     robotConnected: {
       label: "로봇 연결",
-      name: "/polbot/robot_connected",
+      name: "/DOLbot/robot_connected",
       type: "std_msgs/msg/Bool",
       staleMs: 5000
     },
     collision: {
       label: "충격/충돌",
-      name: "/polbot/collision",
+      name: "/DOLbot/collision",
       type: "std_msgs/msg/Bool",
       staleMs: 3000
     },
     sensorsConnected: {
       label: "센서 연결",
-      name: "/polbot/sensors_connected",
+      name: "/DOLbot/sensors_connected",
       type: "std_msgs/msg/Bool",
       staleMs: 5000
     },
     missionStatus: {
       label: "임무 상태",
-      name: "/polbot/mission_status",
+      name: "/DOLbot/mission_status",
       type: "std_msgs/msg/String",
       staleMs: 10000
     },
@@ -180,7 +180,7 @@
 
   function loadTopicConfig() {
     try {
-      const saved = JSON.parse(localStorage.getItem("polbotTopicConfig"));
+      const saved = JSON.parse(localStorage.getItem("DOLbotTopicConfig"));
       if (!saved || typeof saved !== "object") return cloneDefaultTopics();
 
       const merged = cloneDefaultTopics();
@@ -195,7 +195,7 @@
   }
 
   function saveTopicConfig() {
-    localStorage.setItem("polbotTopicConfig", JSON.stringify(state.topicConfig));
+    localStorage.setItem("DOLbotTopicConfig", JSON.stringify(state.topicConfig));
   }
 
   function cloneDefaultArmModel() {
@@ -204,7 +204,7 @@
 
   function loadArmModelConfig() {
     try {
-      const saved = JSON.parse(localStorage.getItem("polbotArmModel"));
+      const saved = JSON.parse(localStorage.getItem("DOLbotArmModel"));
       if (!saved || typeof saved !== "object") return cloneDefaultArmModel();
 
       const model = cloneDefaultArmModel();
@@ -221,7 +221,7 @@
   }
 
   function saveArmModelConfig() {
-    localStorage.setItem("polbotArmModel", JSON.stringify(state.armModel));
+    localStorage.setItem("DOLbotArmModel", JSON.stringify(state.armModel));
   }
 
   function formatTime(date = new Date()) {
