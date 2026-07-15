@@ -79,7 +79,7 @@ button {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(260px, 23vh) minmax(560px, 1.65fr) minmax(220px, 0.75fr);
+  grid-template-columns: minmax(260px, 1fr) minmax(560px, 1.65fr) minmax(220px, 0.75fr);
   align-items: center;
   gap: 18px;
   min-height: 76px;
@@ -332,7 +332,7 @@ button {
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(280px, 0.95fr) minmax(430px, 1.3fr) minmax(300px, 1fr);
-  grid-template-rows: minmax(245px, 34vh) minmax(220px, 30vh) minmax(165px, 1fr);
+  grid-template-rows: minmax(245px, 34vh) minmax(220px, 30vh) minmax(165px, 22vh);
   grid-template-areas:
     "cam1 main cam2"
     "status arm-camera path"
