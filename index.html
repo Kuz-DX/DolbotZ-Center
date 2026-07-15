@@ -37,6 +37,16 @@
         <button id="settingsButton" class="icon-button" type="button" aria-label="토픽 설정 열기">⚙</button>
       </div>
 
+      <div class="event-section">
+        <div class="section-title">
+          <span>EVENT LOG</span>
+          <button id="clearLogButton" type="button">CLEAR</button>
+        </div>
+        <ul id="eventLog" class="event-log">
+          <li><time>--:--:--</time><span>시스템 초기화 완료</span></li>
+        </ul>
+      </div>
+
       <div class="system-summary">
         <div id="systemClock" class="system-clock">--:--:--</div>
         <div id="connectionBadge" class="connection-badge connection-badge--offline">
@@ -214,15 +224,6 @@
           </div>
         </div>
 
-        <div class="event-section">
-          <div class="section-title">
-            <span>EVENT LOG</span>
-            <button id="clearLogButton" type="button">CLEAR</button>
-          </div>
-          <ul id="eventLog" class="event-log">
-            <li><time>--:--:--</time><span>시스템 초기화 완료</span></li>
-          </ul>
-        </div>
       </aside>
 
       <section class="panel camera-panel grid-arm-camera" data-topic-key="armCamera">
@@ -272,7 +273,7 @@
         </div>
       </section>
 
-      <section class="panel arm-kinematics-panel grid-lidar">
+      <section class="panel arm-kinematics-panel grid-arm-kinematics">
         <div class="panel-heading">
           <div>
             <p>MANIPULATOR / FORWARD KINEMATICS</p>
