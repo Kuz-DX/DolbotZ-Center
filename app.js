@@ -2,30 +2,6 @@
   "use strict";
 
   const DEFAULT_TOPICS = {
-    mainCamera: {
-      label: "메인 카메라",
-      name: "/camera/main/image/compressed",
-      type: "sensor_msgs/msg/CompressedImage",
-      staleMs: 3000
-    },
-    subCamera1: {
-      label: "서브 카메라 1",
-      name: "/camera/sub1/image/compressed",
-      type: "sensor_msgs/msg/CompressedImage",
-      staleMs: 3000
-    },
-    subCamera2: {
-      label: "서브 카메라 2",
-      name: "/camera/sub2/image/compressed",
-      type: "sensor_msgs/msg/CompressedImage",
-      staleMs: 3000
-    },
-    armCamera: {
-      label: "로봇팔 카메라",
-      name: "/camera/robot_arm/image/compressed",
-      type: "sensor_msgs/msg/CompressedImage",
-      staleMs: 3000
-    },
     jointStates: {
       label: "로봇팔 관절",
       name: "/joint_states",
@@ -88,6 +64,33 @@
     }
   };
 
+  const DEFAULT_STREAMS = {
+    mainCamera: {
+      label: "메인 카메라",
+      mode: "auto",
+      whepUrl: "http://localhost:8889/main/whep",
+      hlsUrl: "http://localhost:8888/main/index.m3u8"
+    },
+    subCamera1: {
+      label: "서브 카메라 1",
+      mode: "auto",
+      whepUrl: "http://localhost:8889/sub1/whep",
+      hlsUrl: "http://localhost:8888/sub1/index.m3u8"
+    },
+    subCamera2: {
+      label: "서브 카메라 2",
+      mode: "auto",
+      whepUrl: "http://localhost:8889/sub2/whep",
+      hlsUrl: "http://localhost:8888/sub2/index.m3u8"
+    },
+    armCamera: {
+      label: "로봇팔 카메라",
+      mode: "auto",
+      whepUrl: "http://localhost:8889/arm/whep",
+      hlsUrl: "http://localhost:8888/arm/index.m3u8"
+    }
+  };
+
   const DEFAULT_ARM_MODEL = {
     jointOrder: [],
     linkLengths: [0.35, 0.30, 0.24, 0.16, 0.10, 0.08],
@@ -103,6 +106,9 @@
     demo: false,
     subscriptions: new Map(),
     topicConfig: loadTopicConfig(),
+    streamConfig: loadStreamConfig(),
+    mediaPlayers: new Map(),
+    mediaStats: new Map(),
     armModel: loadArmModelConfig(),
     topicStats: new Map(),
     latestJointState: null,
@@ -124,6 +130,7 @@
     settingsButton: $("settingsButton"),
     settingsDialog: $("settingsDialog"),
     topicSettingsGrid: $("topicSettingsGrid"),
+    mediaSettingsGrid: $("mediaSettingsGrid"),
     armModelSettingsGrid: $("armModelSettingsGrid"),
     resetTopicsButton: $("resetTopicsButton"),
     saveTopicsButton: $("saveTopicsButton"),
@@ -145,28 +152,28 @@
 
   const cameraBindings = {
     mainCamera: {
-      image: $("mainCameraImage"),
+      video: $("mainCameraVideo"),
       stage: $("mainCameraStage"),
       rate: $("mainCameraRate"),
       age: $("mainCameraAge"),
       topicLabel: $("mainCameraTopicLabel")
     },
     subCamera1: {
-      image: $("subCamera1Image"),
+      video: $("subCamera1Video"),
       stage: $("subCamera1Stage"),
       rate: $("subCamera1Rate"),
       age: $("subCamera1Age"),
       topicLabel: $("subCamera1TopicLabel")
     },
     subCamera2: {
-      image: $("subCamera2Image"),
+      video: $("subCamera2Video"),
       stage: $("subCamera2Stage"),
       rate: $("subCamera2Rate"),
       age: $("subCamera2Age"),
       topicLabel: $("subCamera2TopicLabel")
     },
     armCamera: {
-      image: $("armCameraImage"),
+      video: $("armCameraVideo"),
       stage: $("armCameraStage"),
       rate: $("armCameraRate"),
       age: $("armCameraAge"),
@@ -196,6 +203,36 @@
 
   function saveTopicConfig() {
     localStorage.setItem("DOLbotTopicConfig", JSON.stringify(state.topicConfig));
+  }
+
+  function cloneDefaultStreams() {
+    return JSON.parse(JSON.stringify(DEFAULT_STREAMS));
+  }
+
+  function loadStreamConfig() {
+    const defaults = cloneDefaultStreams();
+    try {
+      const saved = JSON.parse(localStorage.getItem("DOLbotStreamConfig"));
+      if (!saved || typeof saved !== "object") return defaults;
+
+      Object.keys(defaults).forEach((key) => {
+        const source = saved[key];
+        if (!source || typeof source !== "object") return;
+        if (["auto", "webrtc", "hls", "disabled"].includes(source.mode)) {
+          defaults[key].mode = source.mode;
+        }
+        if (typeof source.whepUrl === "string") defaults[key].whepUrl = source.whepUrl.trim();
+        if (typeof source.hlsUrl === "string") defaults[key].hlsUrl = source.hlsUrl.trim();
+      });
+      return defaults;
+    } catch (error) {
+      console.warn("미디어 스트림 설정을 불러오지 못했습니다.", error);
+      return defaults;
+    }
+  }
+
+  function saveStreamConfig() {
+    localStorage.setItem("DOLbotStreamConfig", JSON.stringify(state.streamConfig));
   }
 
   function cloneDefaultArmModel() {
@@ -371,10 +408,6 @@
     clearSubscriptions();
     initTopicStats();
 
-    subscribeTopic("mainCamera", handleCompressedImage);
-    subscribeTopic("subCamera1", handleCompressedImage);
-    subscribeTopic("subCamera2", handleCompressedImage);
-    subscribeTopic("armCamera", handleCompressedImage);
     subscribeTopic("jointStates", handleJointState);
     subscribeTopic("path", handlePath);
     subscribeTopic("odom", handleOdometry);
@@ -398,7 +431,7 @@
         ros: state.ros,
         name: config.name,
         messageType: config.type,
-        throttle_rate: key.includes("Camera") ? 0 : 50,
+        throttle_rate: 50,
         queue_length: 1,
         compression: "none"
       });
@@ -425,45 +458,292 @@
     state.subscriptions.clear();
   }
 
-  function handleCompressedImage(message, key) {
-    const binding = cameraBindings[key];
-    if (!binding || !message?.data) return;
-
-    const format = String(message.format || "jpeg").toLowerCase();
-    const mime = format.includes("png") ? "image/png" : "image/jpeg";
-    const src = toImageDataUrl(message.data, mime);
-    if (!src) return;
-
-    binding.image.onload = () => {
-      binding.stage.classList.add("has-signal");
-    };
-    binding.image.onerror = () => {
-      binding.stage.classList.remove("has-signal");
-      addLog(`${state.topicConfig[key].label} 이미지 디코딩 실패`, "warning");
-    };
-    binding.image.src = src;
+  function initMediaStats() {
+    state.mediaStats.clear();
+    Object.keys(state.streamConfig).forEach((key) => {
+      state.mediaStats.set(key, {
+        count: 0,
+        lastSeen: 0,
+        lastRateSampleAt: performance.now(),
+        lastRateCount: 0,
+        fps: 0
+      });
+    });
   }
 
-  function toImageDataUrl(data, mime) {
-    if (typeof data === "string") {
-      if (data.startsWith("data:image/")) return data;
-      return `data:${mime};base64,${data}`;
+  function markMediaFrame(key) {
+    const stat = state.mediaStats.get(key);
+    if (!stat) return;
+    stat.count += 1;
+    stat.lastSeen = Date.now();
+  }
+
+  function waitForIceGathering(peerConnection, timeoutMs = 4000) {
+    if (peerConnection.iceGatheringState === "complete") return Promise.resolve();
+
+    return new Promise((resolve) => {
+      const timeout = window.setTimeout(finish, timeoutMs);
+      function finish() {
+        window.clearTimeout(timeout);
+        peerConnection.removeEventListener("icegatheringstatechange", handleChange);
+        resolve();
+      }
+      function handleChange() {
+        if (peerConnection.iceGatheringState === "complete") finish();
+      }
+      peerConnection.addEventListener("icegatheringstatechange", handleChange);
+    });
+  }
+
+  async function startWebRtc(player, config, binding) {
+    if (!/^https?:\/\//i.test(config.whepUrl)) {
+      throw new Error("WHEP URL은 http:// 또는 https://로 시작해야 합니다.");
     }
 
-    if (Array.isArray(data) || ArrayBuffer.isView(data)) {
-      try {
-        const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-        let binary = "";
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-          binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-        }
-        return `data:${mime};base64,${btoa(binary)}`;
-      } catch (error) {
-        console.warn("이미지 변환 실패", error);
+    const peerConnection = new RTCPeerConnection();
+    player.peerConnection = peerConnection;
+    peerConnection.addTransceiver("video", { direction: "recvonly" });
+    peerConnection.ontrack = (event) => {
+      if (player.stopped) return;
+      binding.video.srcObject = event.streams[0] || new MediaStream([event.track]);
+      binding.video.play().catch(() => {});
+    };
+    peerConnection.onconnectionstatechange = () => {
+      if (player.stopped) return;
+      if (peerConnection.connectionState === "failed") {
+        player.forceHls = config.mode === "auto";
+        scheduleMediaRetry(player, `${config.label} WebRTC 연결 끊김`);
+      } else if (peerConnection.connectionState === "disconnected") {
+        window.clearTimeout(player.disconnectTimer);
+        player.disconnectTimer = window.setTimeout(() => {
+          if (peerConnection.connectionState === "disconnected") {
+            player.forceHls = config.mode === "auto";
+            scheduleMediaRetry(player, `${config.label} WebRTC 응답 없음`);
+          }
+        }, 3000);
       }
+    };
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    await waitForIceGathering(peerConnection);
+    if (player.stopped) return;
+
+    player.abortController = new AbortController();
+    const response = await fetch(config.whepUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/sdp",
+        Accept: "application/sdp"
+      },
+      body: peerConnection.localDescription.sdp,
+      signal: player.abortController.signal
+    });
+
+    if (!response.ok) throw new Error(`WHEP HTTP ${response.status}`);
+    const location = response.headers.get("Location");
+    if (location) player.sessionUrl = new URL(location, config.whepUrl).href;
+
+    const answerSdp = await response.text();
+    await peerConnection.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    player.connectTimer = window.setTimeout(() => {
+      if (!binding.stage.classList.contains("has-signal")) {
+        player.forceHls = config.mode === "auto";
+        scheduleMediaRetry(player, `${config.label} WebRTC 연결 시간 초과`);
+      }
+    }, 8000);
+    binding.rate.textContent = "WEBRTC";
+  }
+
+  function startHls(player, config, binding) {
+    if (!/^https?:\/\//i.test(config.hlsUrl)) {
+      throw new Error("HLS URL은 http:// 또는 https://로 시작해야 합니다.");
     }
-    return null;
+
+    const video = binding.video;
+    if (window.Hls?.isSupported()) {
+      const hls = new window.Hls({
+        lowLatencyMode: true,
+        backBufferLength: 0,
+        liveSyncDurationCount: 2,
+        liveMaxLatencyDurationCount: 5
+      });
+      player.hls = hls;
+      hls.on(window.Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(config.hlsUrl));
+      hls.on(window.Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+      hls.on(window.Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal && !player.stopped) {
+          player.forceHls = false;
+          scheduleMediaRetry(player, `${config.label} HLS 오류: ${data.details}`);
+        }
+      });
+      hls.attachMedia(video);
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.onerror = () => {
+        if (!player.stopped) scheduleMediaRetry(player, `${config.label} HLS 재생 오류`);
+      };
+      video.src = config.hlsUrl;
+      video.play().catch(() => {});
+    } else {
+      throw new Error("이 브라우저에서 HLS 재생기를 사용할 수 없습니다.");
+    }
+    binding.rate.textContent = "HLS";
+  }
+
+  async function connectMedia(player) {
+    if (player.stopped || state.demo) return;
+    const config = state.streamConfig[player.key];
+    const binding = cameraBindings[player.key];
+    const stat = state.mediaStats.get(player.key);
+    if (stat) stat.lastSeen = 0;
+    binding.stage.classList.remove("has-signal");
+    binding.age.textContent = "연결 중";
+
+    try {
+      if (config.mode === "hls" || (config.mode === "auto" && player.forceHls)) {
+        startHls(player, config, binding);
+      } else {
+        await startWebRtc(player, config, binding);
+      }
+    } catch (error) {
+      if (player.stopped || error?.name === "AbortError") return;
+      cleanupMediaTransport(player);
+      if (config.mode === "auto" && !player.forceHls && config.hlsUrl) {
+        player.forceHls = true;
+        addLog(`${config.label}: WebRTC 실패, HLS로 전환`, "warning");
+        try {
+          startHls(player, config, binding);
+          return;
+        } catch (hlsError) {
+          player.forceHls = false;
+          scheduleMediaRetry(player, `${config.label}: ${extractErrorMessage(hlsError)}`);
+          return;
+        }
+      }
+      scheduleMediaRetry(player, `${config.label}: ${extractErrorMessage(error)}`);
+    }
+  }
+
+  function cleanupMediaTransport(player) {
+    window.clearTimeout(player.connectTimer);
+    window.clearTimeout(player.disconnectTimer);
+    player.connectTimer = null;
+    player.disconnectTimer = null;
+    player.abortController?.abort();
+    player.abortController = null;
+    player.hls?.destroy();
+    player.hls = null;
+    if (player.peerConnection) {
+      player.peerConnection.ontrack = null;
+      player.peerConnection.onconnectionstatechange = null;
+      player.peerConnection.close();
+    }
+    player.peerConnection = null;
+    if (player.sessionUrl) {
+      fetch(player.sessionUrl, { method: "DELETE", keepalive: true }).catch(() => {});
+      player.sessionUrl = "";
+    }
+
+    const binding = cameraBindings[player.key];
+    binding.video.pause();
+    binding.video.srcObject = null;
+    binding.video.removeAttribute("src");
+    binding.video.load();
+  }
+
+  function scheduleMediaRetry(player, message) {
+    if (player.stopped || player.retryTimer) return;
+    player.retryTimer = -1;
+    cleanupMediaTransport(player);
+    const binding = cameraBindings[player.key];
+    binding.stage.classList.remove("has-signal");
+    binding.age.textContent = "5초 후 재시도";
+    binding.rate.textContent = "OFFLINE";
+    addLog(message, "warning");
+    player.retryTimer = window.setTimeout(() => {
+      player.retryTimer = null;
+      connectMedia(player);
+    }, 5000);
+  }
+
+  function startMedia(key) {
+    stopMedia(key);
+    const config = state.streamConfig[key];
+    const binding = cameraBindings[key];
+    binding.video.style.display = "";
+    binding.topicLabel.textContent = config.mode === "disabled"
+      ? "MEDIA / DISABLED"
+      : `MEDIA / ${config.mode.toUpperCase()}`;
+
+    if (config.mode === "disabled" || state.demo) {
+      binding.rate.textContent = "OFF";
+      binding.age.textContent = "비활성";
+      return;
+    }
+
+    const player = {
+      key,
+      stopped: false,
+      forceHls: false,
+      retryTimer: null,
+      connectTimer: null,
+      disconnectTimer: null,
+      abortController: null,
+      peerConnection: null,
+      hls: null,
+      sessionUrl: ""
+    };
+    state.mediaPlayers.set(key, player);
+
+    binding.video.onplaying = () => {
+      if (player.stopped) return;
+      binding.stage.classList.add("has-signal");
+      binding.age.textContent = "LIVE";
+      window.clearTimeout(player.connectTimer);
+      player.connectTimer = null;
+      if (!player.wasPlaying) addLog(`${config.label} 미디어 스트림 연결`);
+      player.wasPlaying = true;
+    };
+    binding.video.onwaiting = () => {
+      if (!player.stopped) binding.age.textContent = "버퍼링";
+    };
+    binding.video.onerror = null;
+
+    const countFrame = () => {
+      if (player.stopped) return;
+      markMediaFrame(key);
+      binding.video.requestVideoFrameCallback?.(countFrame);
+    };
+    binding.video.requestVideoFrameCallback?.(countFrame);
+    connectMedia(player);
+  }
+
+  function stopMedia(key) {
+    const player = state.mediaPlayers.get(key);
+    if (player) {
+      player.stopped = true;
+      window.clearTimeout(player.retryTimer);
+      cleanupMediaTransport(player);
+      state.mediaPlayers.delete(key);
+    }
+
+    const binding = cameraBindings[key];
+    if (binding) {
+      binding.video.onplaying = null;
+      binding.video.onwaiting = null;
+      binding.video.onerror = null;
+      binding.stage.classList.remove("has-signal");
+    }
+  }
+
+  function startAllMedia() {
+    if (state.demo) return;
+    initMediaStats();
+    Object.keys(state.streamConfig).forEach(startMedia);
+  }
+
+  function stopAllMedia() {
+    Object.keys(state.streamConfig).forEach(stopMedia);
   }
 
   function handleJointState(message) {
@@ -978,17 +1258,29 @@
       const isActive = age <= state.topicConfig[key].staleMs;
       if (isActive) active += 1;
 
-      if (cameraBindings[key]) {
-        cameraBindings[key].rate.textContent = `${stat.hz.toFixed(1)} Hz`;
-        cameraBindings[key].age.textContent = stat.lastSeen ? formatAge(age) : "대기 중";
-        if (!isActive && stat.lastSeen) {
-          cameraBindings[key].stage.classList.remove("has-signal");
-        }
+      const rateElement = $(`${key}Rate`);
+      if (rateElement) {
+        rateElement.textContent = `${stat.hz.toFixed(1)} Hz`;
+      }
+    });
+
+    state.mediaStats.forEach((stat, key) => {
+      const elapsed = (nowPerf - stat.lastRateSampleAt) / 1000;
+      if (elapsed >= 1) {
+        stat.fps = (stat.count - stat.lastRateCount) / elapsed;
+        stat.lastRateCount = stat.count;
+        stat.lastRateSampleAt = nowPerf;
       }
 
-      const rateElement = $(`${key}Rate`);
-      if (rateElement && !cameraBindings[key]) {
-        rateElement.textContent = `${stat.hz.toFixed(1)} Hz`;
+      const binding = cameraBindings[key];
+      const player = state.mediaPlayers.get(key);
+      const age = stat.lastSeen ? now - stat.lastSeen : Infinity;
+      if (stat.lastSeen && !state.demo) {
+        binding.rate.textContent = `${stat.fps.toFixed(1)} FPS`;
+        binding.age.textContent = age < 1500 ? "LIVE" : formatAge(age);
+        if (age > 5000 && player && !player.retryTimer) {
+          scheduleMediaRetry(player, `${state.streamConfig[key].label} 프레임 수신 중단`);
+        }
       }
     });
 
@@ -1059,7 +1351,55 @@
     });
 
     dom.topicSettingsGrid.replaceChildren(fragment);
+    buildMediaSettings();
     buildArmModelSettings();
+  }
+
+  function buildMediaSettings() {
+    const fragment = document.createDocumentFragment();
+
+    Object.entries(state.streamConfig).forEach(([key, config]) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "media-setting";
+
+      const heading = document.createElement("strong");
+      heading.textContent = config.label;
+
+      const mode = document.createElement("select");
+      mode.dataset.streamKey = key;
+      mode.dataset.streamField = "mode";
+      [
+        ["auto", "WebRTC → HLS"],
+        ["webrtc", "WebRTC only"],
+        ["hls", "HLS only"],
+        ["disabled", "사용 안 함"]
+      ].forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        option.selected = config.mode === value;
+        mode.append(option);
+      });
+
+      const whep = document.createElement("input");
+      whep.dataset.streamKey = key;
+      whep.dataset.streamField = "whepUrl";
+      whep.value = config.whepUrl;
+      whep.placeholder = "http://media:8889/path/whep";
+      whep.spellcheck = false;
+
+      const hls = document.createElement("input");
+      hls.dataset.streamKey = key;
+      hls.dataset.streamField = "hlsUrl";
+      hls.value = config.hlsUrl;
+      hls.placeholder = "http://media:8888/path/index.m3u8";
+      hls.spellcheck = false;
+
+      wrapper.append(heading, mode, whep, hls);
+      fragment.append(wrapper);
+    });
+
+    dom.mediaSettingsGrid.replaceChildren(fragment);
   }
 
   function buildArmModelSettings() {
@@ -1139,6 +1479,11 @@
       if (value) state.topicConfig[key].name = value.startsWith("/") ? value : `/${value}`;
     });
 
+    dom.mediaSettingsGrid.querySelectorAll("[data-stream-key]").forEach((input) => {
+      const { streamKey, streamField } = input.dataset;
+      state.streamConfig[streamKey][streamField] = input.value.trim();
+    });
+
     const jointOrderInput = $("armModelInput-jointOrder");
     const linkLengthsInput = $("armModelInput-linkLengths");
     const offsetsInput = $("armModelInput-angleOffsetsDeg");
@@ -1158,12 +1503,19 @@
     }
 
     saveTopicConfig();
+    saveStreamConfig();
     saveArmModelConfig();
     updateTopicLabels();
     initTopicStats();
     renderTopicHealth();
     dom.settingsDialog.close();
-    addLog("토픽 설정 저장 완료");
+    addLog("통신 설정 저장 완료");
+
+    if (!state.demo) {
+      stopAllMedia();
+      startAllMedia();
+      addLog("변경된 미디어 주소로 재연결했습니다.");
+    }
 
     if (state.connected) {
       subscribeAll();
@@ -1173,13 +1525,17 @@
 
   function resetTopicSettings() {
     state.topicConfig = cloneDefaultTopics();
+    state.streamConfig = cloneDefaultStreams();
     state.armModel = cloneDefaultArmModel();
     buildSettingsForm();
   }
 
   function updateTopicLabels() {
     Object.entries(cameraBindings).forEach(([key, binding]) => {
-      binding.topicLabel.textContent = state.topicConfig[key].name;
+      const config = state.streamConfig[key];
+      binding.topicLabel.textContent = config.mode === "disabled"
+        ? "MEDIA / DISABLED"
+        : `MEDIA / ${config.mode.toUpperCase()}`;
     });
   }
 
@@ -1188,12 +1544,14 @@
 
     if (enabled) {
       if (state.connected || state.connecting) disconnectRos();
+      stopAllMedia();
       setConnectionState("demo", "DEMO MODE");
       addLog("명시적 데모 모드를 시작했습니다.", "warning");
       startDemo();
     } else {
       stopDemo();
       resetDisplayedData();
+      startAllMedia();
       setConnectionState("offline", "DISCONNECTED");
       addLog("데모 모드를 종료했습니다.");
     }
@@ -1202,6 +1560,7 @@
   function startDemo() {
     stopDemo();
     initTopicStats();
+    initMediaStats();
     state.demoStartedAt = performance.now();
 
     const animate = (now) => {
@@ -1382,10 +1741,11 @@
     ctx.fillText(`DEMO / ${label}`, 16, 24);
 
     binding.stage.classList.add("has-signal");
-    binding.image.style.display = "none";
+    binding.video.style.display = "none";
+    binding.rate.textContent = `${fps} FPS`;
     binding.age.textContent = "DEMO";
 
-    const stat = state.topicStats.get(key);
+    const stat = state.mediaStats.get(key);
     const tick = Math.floor(t * fps);
     if (stat && tick !== stat._demoTick) {
       stat._demoTick = tick;
@@ -1398,8 +1758,10 @@
     document.querySelectorAll("canvas.demo-camera").forEach((canvas) => canvas.remove());
     Object.values(cameraBindings).forEach((binding) => {
       binding.stage.classList.remove("has-signal");
-      binding.image.removeAttribute("src");
-      binding.image.style.display = "";
+      binding.video.pause();
+      binding.video.srcObject = null;
+      binding.video.removeAttribute("src");
+      binding.video.style.display = "";
       binding.rate.textContent = "0.0 Hz";
       binding.age.textContent = "대기 중";
     });
@@ -1477,6 +1839,7 @@
     });
 
     window.addEventListener("beforeunload", () => {
+      stopAllMedia();
       clearSubscriptions();
       if (state.ros) state.ros.close();
     });
@@ -1500,12 +1863,14 @@
 
   function initialize() {
     initTopicStats();
+    initMediaStats();
     updateTopicLabels();
     renderTopicHealth();
     bindEvents();
     startUiLoops();
     setConnectionState("offline", "DISCONNECTED");
     handleResize();
+    startAllMedia();
     addLog("UI 초기화 완료");
   }
 

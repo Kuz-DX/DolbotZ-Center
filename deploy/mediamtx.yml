@@ -1,0 +1,25 @@
+# 개발/LAN용 예시입니다. 공용망 배포 전 VPN, 방화벽, TLS와 인증을 추가하십시오.
+logLevel: info
+
+rtsp: true
+rtspAddress: :8554
+
+hls: true
+hlsAddress: :8888
+hlsAllowOrigins: ["*"]
+hlsAlwaysRemux: false
+
+webrtc: true
+webrtcAddress: :8889
+webrtcAllowOrigins: ["*"]
+webrtcLocalUDPAddress: :8189
+
+paths:
+  main:
+    source: publisher
+  sub1:
+    source: publisher
+  sub2:
+    source: publisher
+  arm:
+    source: publisher

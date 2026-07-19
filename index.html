@@ -69,11 +69,11 @@
           </div>
         </div>
         <div id="subCamera1Stage" class="camera-stage">
-          <img id="subCamera1Image" alt="서브 카메라 1 영상" />
+          <video id="subCamera1Video" aria-label="서브 카메라 1 영상" muted autoplay playsinline></video>
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
-            <small id="subCamera1TopicLabel">/camera/sub1/image/compressed</small>
+            <small id="subCamera1TopicLabel">MEDIA / sub1</small>
           </div>
           <div class="camera-reticle" aria-hidden="true"></div>
           <div class="camera-footer">
@@ -95,11 +95,11 @@
           </div>
         </div>
         <div id="mainCameraStage" class="camera-stage camera-stage--main">
-          <img id="mainCameraImage" alt="메인 카메라 영상" />
+          <video id="mainCameraVideo" aria-label="메인 카메라 영상" muted autoplay playsinline></video>
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
-            <small id="mainCameraTopicLabel">/camera/main/image/compressed</small>
+            <small id="mainCameraTopicLabel">MEDIA / main</small>
           </div>
           <div class="camera-reticle camera-reticle--main" aria-hidden="true"></div>
           <div class="camera-footer">
@@ -126,11 +126,11 @@
           </div>
         </div>
         <div id="subCamera2Stage" class="camera-stage">
-          <img id="subCamera2Image" alt="서브 카메라 2 영상" />
+          <video id="subCamera2Video" aria-label="서브 카메라 2 영상" muted autoplay playsinline></video>
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
-            <small id="subCamera2TopicLabel">/camera/sub2/image/compressed</small>
+            <small id="subCamera2TopicLabel">MEDIA / sub2</small>
           </div>
           <div class="camera-reticle" aria-hidden="true"></div>
           <div class="camera-footer">
@@ -238,11 +238,11 @@
           </div>
         </div>
         <div id="armCameraStage" class="camera-stage camera-stage--arm">
-          <img id="armCameraImage" alt="로봇팔 카메라 영상" />
+          <video id="armCameraVideo" aria-label="로봇팔 카메라 영상" muted autoplay playsinline></video>
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
-            <small id="armCameraTopicLabel">/camera/robot_arm/image/compressed</small>
+            <small id="armCameraTopicLabel">MEDIA / arm</small>
           </div>
           <div class="camera-reticle" aria-hidden="true"></div>
           <div class="camera-footer">
@@ -283,7 +283,7 @@
         </div>
 
         <div class="topic-health">
-          <div class="section-title"><span>TOPIC HEALTH</span><span id="activeTopicCount">0 / 14 ACTIVE</span></div>
+          <div class="section-title"><span>TOPIC HEALTH</span><span id="activeTopicCount">0 / 10 ACTIVE</span></div>
           <div id="topicHealthList" class="topic-health-list"></div>
         </div>
       </section>
@@ -314,7 +314,7 @@
     <footer class="footer-bar">
       <span>ROS 2 HUMBLE / Ubuntu 22.04</span>
       <span id="footerMessage">실제 장비 토픽을 수신하기 전까지 값은 생성되지 않습니다.</span>
-      <span>DOLBOT UI v1.2.0</span>
+      <span>DOLBOT UI v1.3.0</span>
     </footer>
   </div>
 
@@ -323,14 +323,24 @@
       <div class="settings-header">
         <div>
           <p>ROS 2 INTERFACE</p>
-          <h2>토픽 설정</h2>
+          <h2>통신 설정</h2>
         </div>
         <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
       </div>
       <p class="settings-description">
-        실제 로봇의 토픽명에 맞춰 수정하십시오. 메시지 타입은 ROS 2 표기법을 사용합니다.
+        상태 데이터는 ROS 2 토픽으로, 영상은 WebRTC/HLS 미디어 서버로 분리합니다.
       </p>
       <div id="topicSettingsGrid" class="topic-settings-grid"></div>
+
+      <div class="settings-subsection">
+        <div class="settings-subsection-title">
+          <div>
+            <strong>카메라 미디어 스트림</strong>
+            <small>WebRTC(WHEP) 우선, HLS 자동 대체. 영상은 rosbridge를 통과하지 않습니다.</small>
+          </div>
+        </div>
+        <div id="mediaSettingsGrid" class="media-settings-grid"></div>
+      </div>
 
       <div class="settings-subsection">
         <div class="settings-subsection-title">
@@ -344,11 +354,12 @@
 
       <div class="settings-actions">
         <button id="resetTopicsButton" class="button" type="button">기본값 복원</button>
-        <button id="saveTopicsButton" class="button button--primary" value="default" type="button">저장 및 재구독</button>
+        <button id="saveTopicsButton" class="button button--primary" value="default" type="button">저장 및 재연결</button>
       </div>
     </form>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/roslib@1.4.1/build/roslib.min.js"></script>
   <script src="./app.js"></script>
 </body>
