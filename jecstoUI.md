@@ -33,7 +33,25 @@ export ROS_DOMAIN_ID=0
 ros2 launch dolbotz arm_cam.launch.py
 ```
 
-## 터미널 4 — 경로·주행 상태
+## 터미널 4 — 좌·우 사이드 카메라 ROS
+
+```bash
+ssh jecs@192.168.0.100
+source /opt/ros/humble/setup.bash
+source ~/dolbotZ/install/setup.bash
+export ROS_DOMAIN_ID=0
+LEFT_CAMERA="$(find /dev/v4l/by-id -maxdepth 1 -type l \
+  -iname '*C920*video-index0' -print -quit)"
+RIGHT_CAMERA="$(find /dev/v4l/by-id -maxdepth 1 -type l \
+  -iname '*C922*video-index0' -print -quit)"
+test -n "$LEFT_CAMERA"
+test -n "$RIGHT_CAMERA"
+ros2 launch dolbotz side_cameras.launch.py \
+  left_device:="$LEFT_CAMERA" \
+  right_device:="$RIGHT_CAMERA"
+```
+
+## 터미널 5 — 경로·주행 상태
 
 ```bash
 ssh jecs@192.168.0.100
@@ -43,7 +61,7 @@ export ROS_DOMAIN_ID=0
 ros2 launch dolbotz mission_winter.launch.py enable_visualizer:=false
 ```
 
-## 터미널 5 — 오도메트리·IMU·진단
+## 터미널 6 — 오도메트리·IMU·진단
 
 ```bash
 ssh jecs@192.168.0.100
@@ -53,7 +71,7 @@ export ROS_DOMAIN_ID=0
 ros2 launch robot_bringup reduced_odom_bringup.launch.py
 ```
 
-## 터미널 6 — 로봇팔 관절
+## 터미널 7 — 로봇팔 관절
 
 ```bash
 ssh jecs@192.168.0.100
@@ -63,7 +81,7 @@ export ROS_DOMAIN_ID=0
 ros2 launch rmd_joint_state_bridge joint_state_bridge.launch.py
 ```
 
-## 터미널 7 — rosbridge·UI 포트 포워딩
+## 터미널 8 — rosbridge·UI 포트 포워딩
 
 ```bash
 ssh \
@@ -77,7 +95,7 @@ export ROS_DOMAIN_ID=0
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ```
 
-## 터미널 8 — MediaMTX
+## 터미널 9 — MediaMTX
 
 ```bash
 ssh jecs@192.168.0.100
@@ -87,74 +105,60 @@ sed -i 's/^MEDIA_SERVER_IP=.*/MEDIA_SERVER_IP=192.168.0.100/' .env
 docker compose up
 ```
 
-## 터미널 9 — 메인 카메라: 주행용 D455 → `main`
+## 터미널 10 — 메인 카메라 ROS → `main`
 
 ```bash
 ssh jecs@192.168.0.100
-DRIVE_COLOR="$({
-  for device in /dev/video*; do
-    [[ -e "$device" ]] || continue
-    udevadm info --query=property --name "$device" 2>/dev/null \
-      | grep -Fq '117222251401' || continue
-    v4l2-ctl --device "$device" --list-formats-ext 2>/dev/null \
-      | grep -q "'MJPG'" || continue
-    find -L /dev/v4l/by-id -maxdepth 1 -samefile "$device" -print -quit 2>/dev/null
-    break
-  done
-})"
-test -n "$DRIVE_COLOR"
-ffmpeg -f v4l2 -input_format mjpeg -framerate 20 -video_size 1280x720 \
-  -i "$DRIVE_COLOR" -an -c:v libx264 -preset veryfast -tune zerolatency \
-  -profile:v baseline -g 20 -bf 0 -b:v 1500k \
-  -f rtsp rtsp://127.0.0.1:8554/main
+source /opt/ros/humble/setup.bash
+source ~/dolbotZ/install/setup.bash
+export ROS_DOMAIN_ID=0
+python3 ~/dolbotZ/util/ros_compressed_to_rtsp.py --ros-args \
+  -r __node:=drive_camera_rtsp_bridge \
+  -p image_topic:=/drive/camera/color/image_raw/compressed \
+  -p rtsp_url:=rtsp://127.0.0.1:8554/main \
+  -p fps:=15 -p bitrate_kbps:=1500 -p keyframe_interval:=15
 ```
 
-## 터미널 10 — 서브 카메라 1: C920 → `sub1`
+## 터미널 11 — 좌측 카메라 ROS → `sub1`
 
 ```bash
 ssh jecs@192.168.0.100
-LEFT_CAMERA="$(find /dev/v4l/by-id -maxdepth 1 -type l \
-  -iname '*C920*video-index0' -print -quit)"
-test -n "$LEFT_CAMERA"
-ffmpeg -f v4l2 -input_format mjpeg -framerate 20 -video_size 1280x720 \
-  -i "$LEFT_CAMERA" -an -c:v libx264 -preset veryfast -tune zerolatency \
-  -profile:v baseline -g 20 -bf 0 -b:v 1500k \
-  -f rtsp rtsp://127.0.0.1:8554/sub1
+source /opt/ros/humble/setup.bash
+source ~/dolbotZ/install/setup.bash
+export ROS_DOMAIN_ID=0
+python3 ~/dolbotZ/util/ros_compressed_to_rtsp.py --ros-args \
+  -r __node:=left_camera_rtsp_bridge \
+  -p image_topic:=/side/left/image_raw/compressed \
+  -p rtsp_url:=rtsp://127.0.0.1:8554/sub1 \
+  -p fps:=15 -p bitrate_kbps:=1500 -p keyframe_interval:=15
 ```
 
-## 터미널 11 — 서브 카메라 2: C922 → `sub2`
+## 터미널 12 — 우측 카메라 ROS → `sub2`
 
 ```bash
 ssh jecs@192.168.0.100
-RIGHT_CAMERA="$(find /dev/v4l/by-id -maxdepth 1 -type l \
-  -iname '*C922*video-index0' -print -quit)"
-test -n "$RIGHT_CAMERA"
-ffmpeg -f v4l2 -input_format mjpeg -framerate 20 -video_size 1280x720 \
-  -i "$RIGHT_CAMERA" -an -c:v libx264 -preset veryfast -tune zerolatency \
-  -profile:v baseline -g 20 -bf 0 -b:v 1500k \
-  -f rtsp rtsp://127.0.0.1:8554/sub2
+source /opt/ros/humble/setup.bash
+source ~/dolbotZ/install/setup.bash
+export ROS_DOMAIN_ID=0
+python3 ~/dolbotZ/util/ros_compressed_to_rtsp.py --ros-args \
+  -r __node:=right_camera_rtsp_bridge \
+  -p image_topic:=/side/right/image_raw/compressed \
+  -p rtsp_url:=rtsp://127.0.0.1:8554/sub2 \
+  -p fps:=15 -p bitrate_kbps:=1500 -p keyframe_interval:=15
 ```
 
-## 터미널 12 — 로봇팔 카메라: D455 → `arm`
+## 터미널 13 — 로봇팔 카메라 ROS → `arm`
 
 ```bash
 ssh jecs@192.168.0.100
-ARM_COLOR="$({
-  for device in /dev/video*; do
-    [[ -e "$device" ]] || continue
-    udevadm info --query=property --name "$device" 2>/dev/null \
-      | grep -Fq '213622251385' || continue
-    v4l2-ctl --device "$device" --list-formats-ext 2>/dev/null \
-      | grep -q "'MJPG'" || continue
-    find -L /dev/v4l/by-id -maxdepth 1 -samefile "$device" -print -quit 2>/dev/null
-    break
-  done
-})"
-test -n "$ARM_COLOR"
-ffmpeg -f v4l2 -input_format mjpeg -framerate 20 -video_size 1280x720 \
-  -i "$ARM_COLOR" -an -c:v libx264 -preset veryfast -tune zerolatency \
-  -profile:v baseline -g 20 -bf 0 -b:v 1500k \
-  -f rtsp rtsp://127.0.0.1:8554/arm
+source /opt/ros/humble/setup.bash
+source ~/dolbotZ/install/setup.bash
+export ROS_DOMAIN_ID=0
+python3 ~/dolbotZ/util/ros_compressed_to_rtsp.py --ros-args \
+  -r __node:=arm_camera_rtsp_bridge \
+  -p image_topic:=/arm/camera/color/image_raw/compressed \
+  -p rtsp_url:=rtsp://127.0.0.1:8554/arm \
+  -p fps:=15 -p bitrate_kbps:=1500 -p keyframe_interval:=15
 ```
 
 ## 모니터링 PC 터미널 — UI
