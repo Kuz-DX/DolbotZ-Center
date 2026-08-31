@@ -13,6 +13,12 @@
       type: "sensor_msgs/msg/JointState",
       staleMs: 2000
     },
+    armTargetPointBase: {
+      label: "로봇팔 목표 좌표",
+      name: "/arm/target_point_base",
+      type: "geometry_msgs/msg/PointStamped",
+      staleMs: 3000
+    },
     path: {
       label: "생성 경로",
       name: "/path",
@@ -182,6 +188,7 @@
     armKinematicsCanvas: $("armKinematicsCanvas"),
     pathCanvas: $("pathCanvas"),
     armPlaceholder: $("armPlaceholder"),
+    armTargetPosition: $("armTargetPosition"),
     jointStateList: $("jointStateList"),
     pathPlaceholder: $("pathPlaceholder")
   };
@@ -449,6 +456,7 @@
     initTopicStats();
 
     subscribeTopic("jointStates", handleJointState);
+    subscribeTopic("armTargetPointBase", handleArmTargetPointBase);
     subscribeTopic("path", handlePath);
     subscribeTopic("odom", handleOdometry);
     subscribeTopic("imu", handleImu);
@@ -808,8 +816,14 @@
 
     $("armJointCount").textContent = String(resolved.names.length);
     $("armReach").textContent = `${resolved.reach.toFixed(2)} m`;
-    $("endEffectorPosition").textContent =
-      `EE X ${resolved.endEffector.x.toFixed(2)} / Z ${resolved.endEffector.z.toFixed(2)}`;
+  }
+
+  function handleArmTargetPointBase(message) {
+    const x = Number(message?.point?.x);
+    const z = Number(message?.point?.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+
+    dom.armTargetPosition.textContent = `TARGET X ${x.toFixed(3)} m / Z ${z.toFixed(3)} m`;
   }
 
   function resolveArmJointState(message) {
@@ -1732,6 +1746,12 @@
     };
 
     handleJointState(message);
+    handleArmTargetPointBase({
+      point: {
+        x: 0.42 + Math.sin(t * 0.4) * 0.05,
+        z: 0.28 + Math.cos(t * 0.35) * 0.04
+      }
+    });
 
     const stat = state.topicStats.get("jointStates");
     const tick = Math.floor(t * 30);
@@ -1739,6 +1759,13 @@
       stat._demoTick = tick;
       stat.lastSeen = Date.now();
       stat.count += 1;
+    }
+
+    const targetStat = state.topicStats.get("armTargetPointBase");
+    if (targetStat && tick !== targetStat._demoTick) {
+      targetStat._demoTick = tick;
+      targetStat.lastSeen = Date.now();
+      targetStat.count += 1;
     }
   }
 
@@ -1885,7 +1912,7 @@
 
     $("armJointCount").textContent = "0";
     $("armReach").textContent = "0.00 m";
-    $("endEffectorPosition").textContent = "EE X -- / Z --";
+    dom.armTargetPosition.textContent = "TARGET X -- / Z --";
     $("pathPoseCount").textContent = "0";
     $("pathLength").textContent = "0.0 m";
     $("pathFrame").textContent = "FRAME: --";
