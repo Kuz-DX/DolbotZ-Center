@@ -13,6 +13,12 @@
       type: "sensor_msgs/msg/JointState",
       staleMs: 2000
     },
+    armPose: {
+      label: "로봇팔 실좌표(TF)",
+      name: "/arm/joint_pose_array",
+      type: "geometry_msgs/msg/PoseArray",
+      staleMs: 2000
+    },
     path: {
       label: "생성 경로",
       name: "/path",
@@ -127,10 +133,16 @@
     }
   };
 
+  // army_manipulator 실측값(army_manipulator_macro.xacro의 L1/L2/L3 property,
+  // ARM_JOINT_NAMES 순서)으로 맞춤 - base_joint(수직축 회전)는 이 UI가 가정하는
+  // X-Z 평면 체인에 안 맞아 제외, shoulder/elbow/wrist 3개만 사용.
+  // angleOffsetsDeg/angleDirections는 실측 없이 정할 수 없어 중립값(0/+1)으로
+  // 두고 실기(또는 mock_bringup)로 관절을 움직여보면서 톱니바퀴 설정에서
+  // 직접 맞출 것 - README 8절의 예시값(90,0,0 / 1,-1,1)은 이 로봇 것이 아님.
   const DEFAULT_ARM_MODEL = {
-    jointOrder: [],
-    linkLengths: [0.35, 0.30, 0.24, 0.16, 0.10, 0.08],
-    angleOffsetsDeg: [90, 0, 0, 0, 0, 0],
+    jointOrder: ["shoulder_joint", "elbow_joint", "wrist_joint"],
+    linkLengths: [0.18, 0.22, 0.15],
+    angleOffsetsDeg: [0, 0, 0, 0, 0, 0],
     angleDirections: [1, 1, 1, 1, 1, 1],
     maxJoints: 8
   };
@@ -148,6 +160,8 @@
     armModel: loadArmModelConfig(),
     topicStats: new Map(),
     latestJointState: null,
+    latestArmPose: null,
+    latestArmPoseAt: 0,
     latestPath: null,
     latestOdom: null,
     latestImu: null,
@@ -449,6 +463,7 @@
     initTopicStats();
 
     subscribeTopic("jointStates", handleJointState);
+    subscribeTopic("armPose", handleArmPose);
     subscribeTopic("path", handlePath);
     subscribeTopic("odom", handleOdometry);
     subscribeTopic("imu", handleImu);
@@ -792,6 +807,11 @@
     Object.keys(state.streamConfig).forEach(stopMedia);
   }
 
+  function isArmPoseFresh() {
+    const staleMs = state.topicConfig.armPose?.staleMs ?? 2000;
+    return state.latestArmPoseAt > 0 && (Date.now() - state.latestArmPoseAt) < staleMs;
+  }
+
   function handleJointState(message) {
     if (!Array.isArray(message?.name) || !Array.isArray(message?.position)) return;
 
@@ -802,11 +822,52 @@
     }
 
     state.latestJointState = resolved;
-    drawArmKinematics(resolved);
     renderJointStateList(resolved);
+    $("armJointCount").textContent = String(resolved.names.length);
     dom.armPlaceholder.classList.add("hidden");
 
-    $("armJointCount").textContent = String(resolved.names.length);
+    // /arm/joint_pose_array(TF 실측 좌표)가 최근에 들어오고 있으면 그쪽이
+    // 실제 월드 X-Z 좌표라 더 정확함 - 캔버스/도달거리/EE 표시는 그쪽에
+    // 맡기고 여기서는 각도 목록만 갱신한다. angleOffsetsDeg/angleDirections
+    // 톱니바퀴 근사는 armPose 토픽이 없을 때의 폴백으로만 쓴다.
+    if (isArmPoseFresh()) return;
+
+    drawArmKinematics(resolved);
+    $("armReach").textContent = `${resolved.reach.toFixed(2)} m`;
+    $("endEffectorPosition").textContent =
+      `EE X ${resolved.endEffector.x.toFixed(2)} / Z ${resolved.endEffector.z.toFixed(2)}`;
+  }
+
+  function handleArmPose(message) {
+    if (!Array.isArray(message?.poses) || !message.poses.length) return;
+
+    const points = message.poses.map((pose) => ({
+      x: Number(pose?.position?.x) || 0,
+      z: Number(pose?.position?.z) || 0
+    }));
+
+    let totalLength = 0;
+    for (let index = 1; index < points.length; index += 1) {
+      totalLength += Math.hypot(
+        points[index].x - points[index - 1].x,
+        points[index].z - points[index - 1].z
+      );
+    }
+
+    const endEffector = points[points.length - 1];
+    const resolved = {
+      points,
+      linkAngles: [],
+      totalLength,
+      endEffector,
+      reach: Math.hypot(endEffector.x, endEffector.z)
+    };
+
+    state.latestArmPose = resolved;
+    state.latestArmPoseAt = Date.now();
+    drawArmKinematics(resolved);
+    dom.armPlaceholder.classList.add("hidden");
+
     $("armReach").textContent = `${resolved.reach.toFixed(2)} m`;
     $("endEffectorPosition").textContent =
       `EE X ${resolved.endEffector.x.toFixed(2)} / Z ${resolved.endEffector.z.toFixed(2)}`;
@@ -1135,8 +1196,10 @@
     const originX = width / 2;
     const originY = height / 2 + 10;
 
+    // x는 좌우 반전해서 그린다 - RViz 3D 뷰와 대조해보니 반전 안 하면
+    // 실제 팔 형상과 거울상으로 나왔음(2026-08-28 실기/RViz 비교로 확인).
     const toCanvas = (point) => ({
-      x: originX + point.x * scale,
+      x: originX - point.x * scale,
       y: originY - point.z * scale
     });
 
@@ -1232,7 +1295,7 @@
 
     ctx.fillStyle = "rgba(231, 238, 245, 0.68)";
     ctx.font = '10px "IBM Plex Mono", monospace';
-    ctx.fillText("+X", width - 31, originY - 7);
+    ctx.fillText("+X", margin, originY - 7);
     ctx.fillText("+Z", originX + 7, margin + 8);
 
     ctx.restore();
