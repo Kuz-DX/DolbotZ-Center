@@ -41,6 +41,18 @@ web_ui_topics:
       - "elbow_joint"
       - "wrist_joint"
 
+  armTargetPointBase:
+    label: "로봇팔 목표 좌표"
+    name: "/arm/target_point_base"
+    type: "geometry_msgs/msg/PointStamped"
+    stale_ms: 3000
+    match: "direct"
+    ui_outputs:
+      - "로봇팔 관절 상태의 TARGET X"
+      - "로봇팔 관절 상태의 TARGET Z"
+    ignored_fields:
+      - "point.y"
+
   path:
     label: "생성 경로"
     name: "/path"
