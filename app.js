@@ -1,6 +1,11 @@
 (() => {
   "use strict";
 
+  const CAMERA_TRANSPORT = new URLSearchParams(window.location.search).get("camera") === "compressed"
+    ? "ros-compressed"
+    : "media";
+  document.body.dataset.cameraTransport = CAMERA_TRANSPORT;
+
   const DEFAULT_TOPICS = {
     jointStates: {
       label: "로봇팔 관절",
@@ -10,19 +15,19 @@
     },
     path: {
       label: "생성 경로",
-      name: "/plan",
+      name: "/path",
       type: "nav_msgs/msg/Path",
       staleMs: 5000
     },
     odom: {
       label: "오도메트리",
-      name: "/odom",
+      name: "/odometry/filtered",
       type: "nav_msgs/msg/Odometry",
       staleMs: 2500
     },
     imu: {
       label: "IMU",
-      name: "/imu/data",
+      name: "/imu",
       type: "sensor_msgs/msg/Imu",
       staleMs: 2500
     },
@@ -51,18 +56,49 @@
       staleMs: 5000
     },
     missionStatus: {
-      label: "임무 상태",
-      name: "/DOLbot/mission_status",
+      label: "주행/임무 상태",
+      name: "/drive/status",
       type: "std_msgs/msg/String",
       staleMs: 10000
     },
     diagnostics: {
       label: "진단",
-      name: "/diagnostics",
+      name: "/odometry/diagnostics",
       type: "diagnostic_msgs/msg/DiagnosticArray",
       staleMs: 10000
     }
   };
+
+  const COMPRESSED_CAMERA_TOPICS = {
+    mainCamera: {
+      label: "메인 카메라 (주행 D455)",
+      name: "/drive/camera/color/image_raw/compressed",
+      type: "sensor_msgs/msg/CompressedImage",
+      staleMs: 3000
+    },
+    subCamera1: {
+      label: "서브 카메라 1 (좌측)",
+      name: "/side/left/image_raw/compressed",
+      type: "sensor_msgs/msg/CompressedImage",
+      staleMs: 3000
+    },
+    subCamera2: {
+      label: "서브 카메라 2 (우측)",
+      name: "/side/right/image_raw/compressed",
+      type: "sensor_msgs/msg/CompressedImage",
+      staleMs: 3000
+    },
+    armCamera: {
+      label: "로봇팔 카메라 (팔 D455)",
+      name: "/arm/camera/color/image_raw/compressed",
+      type: "sensor_msgs/msg/CompressedImage",
+      staleMs: 3000
+    }
+  };
+
+  if (CAMERA_TRANSPORT === "ros-compressed") {
+    Object.assign(DEFAULT_TOPICS, COMPRESSED_CAMERA_TOPICS);
+  }
 
   const DEFAULT_STREAMS = {
     mainCamera: {
@@ -153,6 +189,7 @@
   const cameraBindings = {
     mainCamera: {
       video: $("mainCameraVideo"),
+      image: $("mainCameraImage"),
       stage: $("mainCameraStage"),
       rate: $("mainCameraRate"),
       age: $("mainCameraAge"),
@@ -160,6 +197,7 @@
     },
     subCamera1: {
       video: $("subCamera1Video"),
+      image: $("subCamera1Image"),
       stage: $("subCamera1Stage"),
       rate: $("subCamera1Rate"),
       age: $("subCamera1Age"),
@@ -167,6 +205,7 @@
     },
     subCamera2: {
       video: $("subCamera2Video"),
+      image: $("subCamera2Image"),
       stage: $("subCamera2Stage"),
       rate: $("subCamera2Rate"),
       age: $("subCamera2Age"),
@@ -174,6 +213,7 @@
     },
     armCamera: {
       video: $("armCameraVideo"),
+      image: $("armCameraImage"),
       stage: $("armCameraStage"),
       rate: $("armCameraRate"),
       age: $("armCameraAge"),
@@ -418,6 +458,11 @@
     subscribeTopic("sensorsConnected", handleSensorsConnected);
     subscribeTopic("missionStatus", handleMissionStatus);
     subscribeTopic("diagnostics", handleDiagnostics);
+    if (CAMERA_TRANSPORT === "ros-compressed") {
+      Object.keys(COMPRESSED_CAMERA_TOPICS).forEach((key) => {
+        subscribeTopic(key, handleCompressedImage);
+      });
+    }
     updateTopicLabels();
     renderTopicHealth();
   }
@@ -737,12 +782,13 @@
   }
 
   function startAllMedia() {
-    if (state.demo) return;
+    if (state.demo || CAMERA_TRANSPORT === "ros-compressed") return;
     initMediaStats();
     Object.keys(state.streamConfig).forEach(startMedia);
   }
 
   function stopAllMedia() {
+    if (CAMERA_TRANSPORT === "ros-compressed") return;
     Object.keys(state.streamConfig).forEach(stopMedia);
   }
 
@@ -969,6 +1015,39 @@
         const level = Number(status.level || 0) >= 2 ? "error" : "warning";
         addLog(`[DIAG] ${status.name || "unknown"}: ${status.message || "상태 이상"}`, level);
       });
+  }
+
+  function compressedImageMimeType(format) {
+    const normalized = String(format || "jpeg").toLowerCase();
+    if (normalized.includes("compresseddepth")) return "";
+    if (normalized.includes("png")) return "image/png";
+    if (normalized.includes("webp")) return "image/webp";
+    return "image/jpeg";
+  }
+
+  function handleCompressedImage(message, key) {
+    const binding = cameraBindings[key];
+    if (!binding?.image || typeof message?.data !== "string" || !message.data) return;
+
+    const mimeType = compressedImageMimeType(message.format);
+    if (!mimeType) {
+      const stat = state.topicStats.get(key);
+      if (stat && !stat.unsupportedFormatLogged) {
+        stat.unsupportedFormatLogged = true;
+        addLog(`${state.topicConfig[key].label}: compressedDepth는 컬러 영상으로 표시할 수 없습니다.`, "warning");
+      }
+      return;
+    }
+
+    binding.image.onload = () => {
+      binding.stage.classList.add("has-signal");
+      binding.age.textContent = "LIVE";
+    };
+    binding.image.onerror = () => {
+      binding.stage.classList.remove("has-signal");
+      binding.age.textContent = "디코딩 오류";
+    };
+    binding.image.src = `data:${mimeType};base64,${message.data}`;
   }
 
   function updateStatusCard(cardId, valueId, text, mode) {
@@ -1262,6 +1341,14 @@
       if (rateElement) {
         rateElement.textContent = `${stat.hz.toFixed(1)} Hz`;
       }
+
+      if (CAMERA_TRANSPORT === "ros-compressed" && cameraBindings[key]) {
+        const binding = cameraBindings[key];
+        binding.age.textContent = stat.lastSeen
+          ? age < 1500 ? "LIVE" : formatAge(age)
+          : "대기 중";
+        if (age > 5000) binding.stage.classList.remove("has-signal");
+      }
     });
 
     state.mediaStats.forEach((stat, key) => {
@@ -1356,6 +1443,10 @@
   }
 
   function buildMediaSettings() {
+    if (CAMERA_TRANSPORT === "ros-compressed") {
+      dom.mediaSettingsGrid.replaceChildren();
+      return;
+    }
     const fragment = document.createDocumentFragment();
 
     Object.entries(state.streamConfig).forEach(([key, config]) => {
@@ -1511,7 +1602,7 @@
     dom.settingsDialog.close();
     addLog("통신 설정 저장 완료");
 
-    if (!state.demo) {
+    if (!state.demo && CAMERA_TRANSPORT === "media") {
       stopAllMedia();
       startAllMedia();
       addLog("변경된 미디어 주소로 재연결했습니다.");
@@ -1532,6 +1623,10 @@
 
   function updateTopicLabels() {
     Object.entries(cameraBindings).forEach(([key, binding]) => {
+      if (CAMERA_TRANSPORT === "ros-compressed") {
+        binding.topicLabel.textContent = state.topicConfig[key]?.name || "ROS / 미설정";
+        return;
+      }
       const config = state.streamConfig[key];
       binding.topicLabel.textContent = config.mode === "disabled"
         ? "MEDIA / DISABLED"
@@ -1742,10 +1837,13 @@
 
     binding.stage.classList.add("has-signal");
     binding.video.style.display = "none";
+    if (binding.image) binding.image.style.display = "none";
     binding.rate.textContent = `${fps} FPS`;
     binding.age.textContent = "DEMO";
 
-    const stat = state.mediaStats.get(key);
+    const stat = CAMERA_TRANSPORT === "ros-compressed"
+      ? state.topicStats.get(key)
+      : state.mediaStats.get(key);
     const tick = Math.floor(t * fps);
     if (stat && tick !== stat._demoTick) {
       stat._demoTick = tick;
@@ -1762,6 +1860,12 @@
       binding.video.srcObject = null;
       binding.video.removeAttribute("src");
       binding.video.style.display = "";
+      if (binding.image) {
+        binding.image.onload = null;
+        binding.image.onerror = null;
+        binding.image.removeAttribute("src");
+        binding.image.style.display = "";
+      }
       binding.rate.textContent = "0.0 Hz";
       binding.age.textContent = "대기 중";
     });
@@ -1861,7 +1965,21 @@
     setInterval(updateRatesAndAges, 500);
   }
 
+  function configureCameraTransportUi() {
+    if (CAMERA_TRANSPORT !== "ros-compressed") return;
+
+    document.title = "DOLBOT CENTER | ROS CompressedImage";
+    const settingsDescription = $("settingsDescription");
+    const mediaSettingsSection = $("mediaSettingsSection");
+    if (settingsDescription) {
+      settingsDescription.textContent =
+        "상태 데이터와 카메라 영상 모두 rosbridge를 통해 ROS 2 토픽으로 수신합니다.";
+    }
+    if (mediaSettingsSection) mediaSettingsSection.hidden = true;
+  }
+
   function initialize() {
+    configureCameraTransportUi();
     initTopicStats();
     initMediaStats();
     updateTopicLabels();
@@ -1871,7 +1989,9 @@
     setConnectionState("offline", "DISCONNECTED");
     handleResize();
     startAllMedia();
-    addLog("UI 초기화 완료");
+    addLog(CAMERA_TRANSPORT === "ros-compressed"
+      ? "ROS CompressedImage 영상 모드 초기화 완료"
+      : "UI 초기화 완료");
   }
 
   initialize();

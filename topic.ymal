@@ -1,0 +1,247 @@
+# DOLBOT CENTER 웹 UI ↔ /home/kuzdx/dolbotZ 인터페이스 매핑
+# 요청한 파일명을 그대로 사용했다. 내용은 표준 YAML 문법이다.
+schema_version: 1
+generated_at: "2026-08-31"
+source_repositories:
+  web_ui: "/home/kuzdx/DolbotZ-Center"
+  ros2_workspace: "/home/kuzdx/dolbotZ"
+
+rosbridge:
+  default_url: "ws://localhost:9090"
+  subscription_options:
+    throttle_rate_ms: 50
+    queue_length: 1
+    compression: "none"
+
+# match 값:
+#   direct  = 토픽명, 메시지 타입, UI 의미가 직접 일치
+#   partial = 메시지 타입은 호환되지만 UI 의미 또는 포함 범위가 일부만 일치
+#   missing = /dolbotZ에 호환 퍼블리셔가 없어 별도 어댑터/상태 노드가 필요
+web_ui_topics:
+  jointStates:
+    label: "로봇팔 관절"
+    name: "/joint_states"
+    type: "sensor_msgs/msg/JointState"
+    stale_ms: 2000
+    match: "direct"
+    publisher: "rmd_joint_state_bridge 또는 joint_state_broadcaster"
+    source: "src/arm/rmd_joint_state_bridge/src/joint_state_bridge_node.cpp"
+    ui_outputs:
+      - "2D 로봇팔 순기구학"
+      - "관절 이름/각도/속도"
+      - "엔드이펙터 X-Z 위치"
+    expected_joint_names:
+      - "base_joint"
+      - "shoulder_joint"
+      - "elbow_joint"
+      - "wrist_joint"
+      - "gripper_joint"
+    planar_visualization_joints:
+      - "shoulder_joint"
+      - "elbow_joint"
+      - "wrist_joint"
+
+  path:
+    label: "생성 경로"
+    name: "/path"
+    type: "nav_msgs/msg/Path"
+    stale_ms: 5000
+    match: "direct"
+    publisher: "dolbotz/slope_decision"
+    source: "src/dolbotz/dolbotz/drive_area/slope_decision.py"
+    expected_rate_hz: 20
+    expected_frame: "camera_link"
+    ui_outputs:
+      - "주행 경로 캔버스"
+      - "pose 수"
+      - "경로 길이"
+      - "header.frame_id"
+    caution: "경로 위 로봇 마커는 Path와 Odometry의 frame_id가 같을 때만 표시된다."
+
+  odom:
+    label: "오도메트리"
+    name: "/odometry/filtered"
+    type: "nav_msgs/msg/Odometry"
+    stale_ms: 2500
+    match: "direct"
+    publisher: "reduced_odom/reduced_odom_node"
+    source: "src/drive/autonomous/reduced_odom/config/reduced_odom.yaml"
+    expected_frame: "odom"
+    expected_child_frame: "base_link"
+    ui_outputs:
+      - "POSITION X/Y"
+      - "YAW/AZ"
+      - "SPEED"
+      - "경로 위 로봇 마커"
+    alternatives:
+      - name: "/direct_odom"
+        publisher: "direct_odom/direct_odom_node"
+      - name: "/wheel/odom"
+        publisher: "rmd_x8_driver/rmd_x8_driver_node"
+        caution: "vx 중심의 원시 휠 오도메트리이므로 기본값으로 권장하지 않는다."
+
+  imu:
+    label: "IMU"
+    name: "/imu"
+    type: "sensor_msgs/msg/Imu"
+    stale_ms: 2500
+    match: "direct"
+    publisher: "myahrs_driver/myahrs_driver_node"
+    source: "src/drive/autonomous/myahrs_driver/src/myahrs_driver_node.cpp"
+    expected_frame: "imu_link"
+    ui_outputs:
+      - "ROLL"
+      - "PITCH/카메라 EL"
+
+  battery:
+    label: "배터리"
+    name: "/battery_state"
+    type: "sensor_msgs/msg/BatteryState"
+    stale_ms: 10000
+    match: "missing"
+    publisher: null
+    ui_outputs:
+      - "배터리 퍼센트"
+      - "전압"
+      - "전류"
+    adapter_hint: >-
+      /wheel/motor_status의 DiagnosticStatus.values에 voltage_v와
+      torque_current_a가 있으나 BatteryState가 아니며 SOC도 없다.
+      배터리/BMS 노드 또는 DiagnosticArray→BatteryState 어댑터가 필요하다.
+
+  robotConnected:
+    label: "로봇 연결"
+    name: "/DOLbot/robot_connected"
+    type: "std_msgs/msg/Bool"
+    stale_ms: 5000
+    match: "missing"
+    publisher: null
+    ui_outputs:
+      - "ROBOT LINK 상태 카드"
+    adapter_hint: "핵심 노드/모터 피드백 heartbeat를 종합하는 상태 노드가 필요하다."
+
+  collision:
+    label: "충격/충돌"
+    name: "/DOLbot/collision"
+    type: "std_msgs/msg/Bool"
+    stale_ms: 3000
+    match: "missing"
+    publisher: null
+    ui_outputs:
+      - "IMPACT / COLLISION 상태 카드"
+      - "충돌 이벤트 로그"
+    caution: >-
+      /emergency_stop은 운용자/보호 정지 신호이고 MPPI 내부 collision 판정은
+      독립 Bool 토픽이 아니므로 둘 다 이 UI 토픽에 직접 연결하면 안 된다.
+
+  sensorsConnected:
+    label: "센서 연결"
+    name: "/DOLbot/sensors_connected"
+    type: "std_msgs/msg/Bool"
+    stale_ms: 5000
+    match: "missing"
+    publisher: null
+    ui_outputs:
+      - "SENSOR LINK 상태 카드"
+    adapter_hint: "IMU, 카메라, 휠 피드백 freshness를 종합하는 상태 노드가 필요하다."
+
+  missionStatus:
+    label: "주행/임무 상태"
+    name: "/drive/status"
+    type: "std_msgs/msg/String"
+    stale_ms: 10000
+    match: "partial"
+    publisher: "dolbotz/slope_decision"
+    source: "src/dolbotz/dolbotz/drive_area/slope_decision.py"
+    values:
+      - "flat"
+      - "slope"
+    ui_outputs:
+      - "플랫폼 상태 문자열"
+    caution: >-
+      실제 계절 미션 결과는 mission_manager_interfaces/msg/MissionResult라서
+      웹 UI의 std_msgs/String 구독과 직접 호환되지 않는다.
+    incompatible_mission_result_topics:
+      - "/mission/spring_ifof/result"
+      - "/mission/summer_traffic/result"
+      - "/mission/fall_marker/result"
+      - "/mission/escort_follow/result"
+
+  diagnostics:
+    label: "진단"
+    name: "/odometry/diagnostics"
+    type: "diagnostic_msgs/msg/DiagnosticArray"
+    stale_ms: 10000
+    match: "partial"
+    publisher: "reduced_odom/reduced_odom_node"
+    source: "src/drive/autonomous/reduced_odom/src/reduced_odom_node.cpp"
+    ui_outputs:
+      - "전체 HEALTH 점수"
+      - "WARN/ERROR 이벤트 로그"
+    alternatives:
+      - name: "/wheel/motor_status"
+        publisher: "rmd_x8_driver/rmd_x8_driver_node"
+        coverage: "좌/우 구동 모터 통신, 오류, 전류, 전압, 온도"
+    caution: >-
+      웹 UI는 DiagnosticArray 하나만 구독한다. 오도메트리와 모터 진단을 모두
+      표시하려면 두 토픽을 /diagnostics로 합치는 diagnostic_aggregator 또는
+      별도 릴레이가 필요하다.
+
+compressed_camera_topics:
+  mainCamera:
+    label: "메인 카메라 / 주행용 D455 컬러"
+    name: "/drive/camera/color/image_raw/compressed"
+    type: "sensor_msgs/msg/CompressedImage"
+    stale_ms: 3000
+    match: "direct"
+    publisher: "realsense2_camera + compressed_image_transport (drive_cam.launch.py)"
+    source: "src/dolbotz/config/realsense_cameras.yaml"
+    configured_profile: "424x240@15"
+
+  subCamera1:
+    label: "서브 카메라 1 / 좌측 USB 카메라"
+    name: "/side/left/image_raw/compressed"
+    type: "sensor_msgs/msg/CompressedImage"
+    stale_ms: 3000
+    match: "direct"
+    publisher: "usb_cam (side_cameras.launch.py, namespace=side/left)"
+    source: "src/dolbotz/launch/side_cameras.launch.py"
+    configured_profile: "640x480@15 MJPEG"
+
+  subCamera2:
+    label: "서브 카메라 2 / 우측 USB 카메라"
+    name: "/side/right/image_raw/compressed"
+    type: "sensor_msgs/msg/CompressedImage"
+    stale_ms: 3000
+    match: "direct"
+    publisher: "usb_cam (side_cameras.launch.py, namespace=side/right)"
+    source: "src/dolbotz/launch/side_cameras.launch.py"
+    configured_profile: "640x480@15 MJPEG"
+
+  armCamera:
+    label: "로봇팔 카메라 / 팔 D455 컬러"
+    name: "/arm/camera/color/image_raw/compressed"
+    type: "sensor_msgs/msg/CompressedImage"
+    stale_ms: 3000
+    match: "direct"
+    publisher: "realsense2_camera + compressed_image_transport (arm_cam.launch.py)"
+    source: "src/dolbotz/config/realsense_cameras.yaml"
+    configured_profile: "640x480@15"
+
+camera_transport_profiles:
+  media_server:
+    entrypoint: "index.html"
+    ros_camera_topics_used: false
+    streams:
+      mainCamera: "main"
+      subCamera1: "sub1"
+      subCamera2: "sub2"
+      armCamera: "arm"
+
+  ros_compressed:
+    entrypoint: "index-compressed.html"
+    resolved_url: "index.html?camera=compressed"
+    ros_camera_topics_used: true
+    warning: >-
+      Base64 JSON 변환 때문에 영상 원본보다 대역폭과 브라우저 CPU 사용량이
+      증가한다. 저해상도/저프레임 비상·대체 운용용으로 권장한다.

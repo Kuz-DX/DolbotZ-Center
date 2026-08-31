@@ -16,8 +16,10 @@
 ```text
 DolbotZ-Center/
 ├── index.html
+├── index-compressed.html
 ├── styles.css
 ├── app.js
+├── topic.ymal
 ├── deploy/
 │   ├── docker-compose.yml
 │   ├── mediamtx.yml
@@ -61,9 +63,9 @@ http://localhost:8080
 
 상단의 `연결` 버튼을 누르면 rosbridge에 연결하고 토픽 구독을 시작합니다.
 
-## 4. 분리된 통신 구조
+## 4. 영상 전송 방식
 
-이 버전은 카메라 `CompressedImage`를 rosbridge에서 구독하지 않습니다.
+기본 `index.html`은 카메라 `CompressedImage`를 rosbridge에서 구독하지 않습니다.
 
 ```text
 Odom / IMU / Battery / JointState / Path / 상태 플래그
@@ -75,24 +77,58 @@ Odom / IMU / Battery / JointState / Path / 상태 플래그
   -> 실패 시 HLS :8888 -> <video>
 ```
 
-Base64는 원본 바이너리보다 약 33% 커지고 JSON 처리 비용도 추가됩니다. 영상이 미디어 서버로 이동하면 rosbridge에는 10개의 저대역폭 상태 토픽만 남습니다.
+Base64는 원본 바이너리보다 약 33% 커지고 JSON 처리 비용도 추가됩니다. 영상이 미디어 서버로 이동하면 rosbridge에는 저대역폭 상태 토픽만 남습니다.
+
+미디어 서버를 사용할 수 없는 경우에는 별도 진입점을 사용합니다.
+
+```text
+http://localhost:8080/index-compressed.html
+```
+
+이 주소는 `index.html?camera=compressed` 모드를 열며, 네 카메라의
+`sensor_msgs/msg/CompressedImage`를 상태 토픽과 함께 rosbridge로 구독합니다.
+MediaMTX, FFmpeg RTSP publish, `8888/8889/8189` 포트는 이 모드에서 필요하지
+않습니다. D455의 압축 전송 플러그인이 없다면 센서 PC에 다음 패키지를 설치합니다.
+
+```bash
+sudo apt install ros-humble-compressed-image-transport
+```
 
 ## 5. 기본 ROS 2 토픽 계약
 
 | 용도 | 기본 토픽 | 메시지 타입 |
 |---|---|---|
 | 로봇팔 관절 | `/joint_states` | `sensor_msgs/msg/JointState` |
-| 생성 경로 | `/plan` | `nav_msgs/msg/Path` |
-| 오도메트리 | `/odom` | `nav_msgs/msg/Odometry` |
-| IMU | `/imu/data` | `sensor_msgs/msg/Imu` |
+| 생성 경로 | `/path` | `nav_msgs/msg/Path` |
+| 오도메트리 | `/odometry/filtered` | `nav_msgs/msg/Odometry` |
+| IMU | `/imu` | `sensor_msgs/msg/Imu` |
 | 배터리 | `/battery_state` | `sensor_msgs/msg/BatteryState` |
 | 로봇 연결 | `/DOLbot/robot_connected` | `std_msgs/msg/Bool` |
 | 충격/충돌 | `/DOLbot/collision` | `std_msgs/msg/Bool` |
 | 센서 연결 | `/DOLbot/sensors_connected` | `std_msgs/msg/Bool` |
-| 임무 상태 | `/DOLbot/mission_status` | `std_msgs/msg/String` |
-| 진단 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` |
+| 주행/임무 상태 | `/drive/status` | `std_msgs/msg/String` |
+| 진단 | `/odometry/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` |
 
 톱니바퀴에서 ROS 토픽과 네 카메라의 WHEP/HLS 주소를 변경할 수 있습니다. 설정은 브라우저 `localStorage`에 저장됩니다.
+
+`/battery_state`와 세 개의 `/DOLbot/*` Bool 토픽은 현재 `/dolbotZ` 저장소에
+호환 퍼블리셔가 없습니다. 직접/부분/미구현 매칭과 근거는 `topic.ymal`에
+정리되어 있습니다.
+
+### CompressedImage 모드의 카메라 토픽
+
+| UI 위치 | ROS 2 토픽 | 메시지 타입 |
+|---|---|---|
+| 메인 카메라 | `/drive/camera/color/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
+| 서브 카메라 1 | `/side/left/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
+| 서브 카메라 2 | `/side/right/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
+| 로봇팔 카메라 | `/arm/camera/color/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
+
+CompressedImage 모드에서는 톱니바퀴의 ROS 토픽 목록에 카메라 4개가 추가되고,
+MediaMTX 주소 설정은 숨겨집니다. 컬러 JPEG/PNG/WebP만 표시하며
+`compressedDepth`는 표시하지 않습니다. 카메라 네 대의 Base64 영상이 모두
+rosbridge를 통과하므로 네트워크 사용량과 브라우저 CPU 부하는 기본 MediaMTX
+모드보다 큽니다.
 
 ## 6. MediaMTX 실행
 

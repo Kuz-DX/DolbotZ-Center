@@ -70,6 +70,7 @@
         </div>
         <div id="subCamera1Stage" class="camera-stage">
           <video id="subCamera1Video" aria-label="서브 카메라 1 영상" muted autoplay playsinline></video>
+          <img id="subCamera1Image" class="compressed-frame" alt="서브 카메라 1 ROS 압축 영상" />
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
@@ -96,6 +97,7 @@
         </div>
         <div id="mainCameraStage" class="camera-stage camera-stage--main">
           <video id="mainCameraVideo" aria-label="메인 카메라 영상" muted autoplay playsinline></video>
+          <img id="mainCameraImage" class="compressed-frame" alt="메인 카메라 ROS 압축 영상" />
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
@@ -127,6 +129,7 @@
         </div>
         <div id="subCamera2Stage" class="camera-stage">
           <video id="subCamera2Video" aria-label="서브 카메라 2 영상" muted autoplay playsinline></video>
+          <img id="subCamera2Image" class="compressed-frame" alt="서브 카메라 2 ROS 압축 영상" />
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
@@ -239,6 +242,7 @@
         </div>
         <div id="armCameraStage" class="camera-stage camera-stage--arm">
           <video id="armCameraVideo" aria-label="로봇팔 카메라 영상" muted autoplay playsinline></video>
+          <img id="armCameraImage" class="compressed-frame" alt="로봇팔 카메라 ROS 압축 영상" />
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
@@ -327,12 +331,12 @@
         </div>
         <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
       </div>
-      <p class="settings-description">
+      <p id="settingsDescription" class="settings-description">
         상태 데이터는 ROS 2 토픽으로, 영상은 WebRTC/HLS 미디어 서버로 분리합니다.
       </p>
       <div id="topicSettingsGrid" class="topic-settings-grid"></div>
 
-      <div class="settings-subsection">
+      <div id="mediaSettingsSection" class="settings-subsection">
         <div class="settings-subsection-title">
           <div>
             <strong>카메라 미디어 스트림</strong>

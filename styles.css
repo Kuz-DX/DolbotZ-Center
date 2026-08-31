@@ -449,7 +449,8 @@ button {
   background-size: 28px 28px, 28px 28px, auto;
 }
 
-.camera-stage video {
+.camera-stage video,
+.camera-stage .compressed-frame {
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -461,6 +462,18 @@ button {
 }
 
 .camera-stage.has-signal video {
+  display: block;
+}
+
+.camera-stage.has-signal .compressed-frame {
+  display: none;
+}
+
+body[data-camera-transport="ros-compressed"] .camera-stage.has-signal video {
+  display: none;
+}
+
+body[data-camera-transport="ros-compressed"] .camera-stage.has-signal .compressed-frame {
   display: block;
 }
 
@@ -1652,7 +1665,8 @@ body::before {
   background-size: 32px 32px;
 }
 
-.camera-stage video {
+.camera-stage video,
+.camera-stage .compressed-frame {
   background: #05080b;
 }
 
