@@ -177,6 +177,31 @@
   };
 
   const $ = (id) => document.getElementById(id);
+  const TOP_CAMERA_LAYOUT_STORAGE_KEY = "dolbot.topCameraLayout";
+  const DASHBOARD_LAYOUT_STORAGE_KEY = "dolbot.dashboardLayout";
+  const TOP_CAMERA_MIN_WIDTHS = {
+    left: 220,
+    main: 420,
+    right: 220
+  };
+  const DASHBOARD_MIN_SIZES = {
+    left: 220,
+    middle: 280,
+    right: 260,
+    top: 180,
+    upper: 180,
+    lower: 120
+  };
+
+  function setText(id, text) {
+    const element = $(id);
+    if (element) element.textContent = text;
+  }
+
+  function setStyleProperty(id, property, value) {
+    const element = $(id);
+    if (element) element.style.setProperty(property, value);
+  }
 
   const dom = {
     rosbridgeUrl: $("rosbridgeUrl"),
@@ -194,8 +219,6 @@
     connectionBadge: $("connectionBadge"),
     connectionText: $("connectionText"),
     footerMessage: $("footerMessage"),
-    eventLog: $("eventLog"),
-    clearLogButton: $("clearLogButton"),
     overallHealth: $("overallHealth"),
     activeTopicCount: $("activeTopicCount"),
     topicHealthList: $("topicHealthList"),
@@ -332,18 +355,8 @@
   }
 
   function addLog(message, level = "info") {
-    const item = document.createElement("li");
-    item.dataset.level = level;
-    const time = document.createElement("time");
-    const text = document.createElement("span");
-    time.textContent = formatTime();
-    text.textContent = message;
-    item.append(time, text);
-    dom.eventLog.prepend(item);
-
-    while (dom.eventLog.children.length > 80) {
-      dom.eventLog.lastElementChild?.remove();
-    }
+    const method = level === "error" ? "error" : level === "warning" ? "warn" : "info";
+    console[method]?.(`[${formatTime()}] ${message}`);
   }
 
   function setConnectionState(mode, message) {
@@ -820,6 +833,19 @@
     return state.latestArmPoseAt > 0 && (Date.now() - state.latestArmPoseAt) < staleMs;
   }
 
+  function updateRmdDps(velocities) {
+    const finiteVelocities = velocities
+      .map((velocity) => Number(velocity))
+      .filter((velocity) => Number.isFinite(velocity));
+    if (!finiteVelocities.length) {
+      setText("rmdDps", "-- deg/s");
+      return;
+    }
+
+    const peakDps = radToDeg(Math.max(...finiteVelocities.map((velocity) => Math.abs(velocity))));
+    setText("rmdDps", `${peakDps.toFixed(1)} deg/s`);
+  }
+
   function handleJointState(message) {
     if (!Array.isArray(message?.name) || !Array.isArray(message?.position)) return;
 
@@ -830,6 +856,7 @@
     }
 
     state.latestJointState = resolved;
+    updateRmdDps(Array.isArray(message.velocity) ? message.velocity : []);
     renderJointStateList(resolved);
     $("armJointCount").textContent = String(resolved.names.length);
     dom.armPlaceholder.classList.add("hidden");
@@ -1984,6 +2011,7 @@
     $("odomYaw").textContent = "--°";
     $("linearSpeed").textContent = "-- m/s";
     $("hudSpeed").textContent = "0.00 m/s";
+    setText("rmdDps", "-- deg/s");
     $("imuRoll").textContent = "--°";
     $("imuPitch").textContent = "--°";
     $("batteryPercentage").textContent = "--%";
@@ -2005,7 +2033,271 @@
     if (state.latestPath) drawPath(state.latestPath);
   }
 
+  function applyTopCameraLayout(layout) {
+    const row = $("topCameraRow");
+    if (!row) return;
+
+    ["left", "main", "right"].forEach((key) => {
+      const value = Number(layout?.[key]);
+      if (Number.isFinite(value) && value > 0) {
+        row.style.setProperty(`--top-camera-${key}`, `${value}fr`);
+      }
+    });
+  }
+
+  function saveTopCameraLayout(layout) {
+    try {
+      localStorage.setItem(TOP_CAMERA_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+    } catch (error) {
+      console.warn("Failed to save camera layout", error);
+    }
+  }
+
+  function loadTopCameraLayout() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TOP_CAMERA_LAYOUT_STORAGE_KEY) || "null");
+      applyTopCameraLayout(saved);
+    } catch (error) {
+      console.warn("Failed to load camera layout", error);
+    }
+  }
+
+  function getTopCameraWidths() {
+    const left = document.querySelector(".grid-cam-1")?.getBoundingClientRect().width || 0;
+    const main = document.querySelector(".grid-main-camera")?.getBoundingClientRect().width || 0;
+    const right = document.querySelector(".grid-cam-2")?.getBoundingClientRect().width || 0;
+    return { left, main, right };
+  }
+
+  function resizePair(first, second, delta, preferredFirstMin, preferredSecondMin) {
+    const pairTotal = first + second;
+    const preferredTotal = preferredFirstMin + preferredSecondMin;
+    const minimumScale = Math.min(1, (pairTotal * 0.8) / preferredTotal);
+    const firstMin = Math.max(24, preferredFirstMin * minimumScale);
+    const secondMin = Math.max(24, preferredSecondMin * minimumScale);
+    const nextFirst = Math.min(pairTotal - secondMin, Math.max(firstMin, first + delta));
+    return [nextFirst, pairTotal - nextFirst];
+  }
+
+  function resizeTopCameraPair(handle, deltaX, startWidths) {
+    const widths = { ...startWidths };
+
+    if (handle === "left") {
+      [widths.left, widths.main] = resizePair(
+        startWidths.left,
+        startWidths.main,
+        deltaX,
+        TOP_CAMERA_MIN_WIDTHS.left,
+        TOP_CAMERA_MIN_WIDTHS.main
+      );
+    } else {
+      [widths.main, widths.right] = resizePair(
+        startWidths.main,
+        startWidths.right,
+        deltaX,
+        TOP_CAMERA_MIN_WIDTHS.main,
+        TOP_CAMERA_MIN_WIDTHS.right
+      );
+    }
+
+    applyTopCameraLayout(widths);
+    handleResize();
+    return widths;
+  }
+
+  function bindTopCameraResizers() {
+    const row = $("topCameraRow");
+    if (!row) return;
+
+    loadTopCameraLayout();
+
+    row.querySelectorAll(".camera-column-resizer").forEach((resizer) => {
+      let activeLayout = null;
+
+      const applyKeyboardDelta = (deltaX) => {
+        const layout = resizeTopCameraPair(resizer.dataset.cameraResizer, deltaX, getTopCameraWidths());
+        saveTopCameraLayout(layout);
+      };
+
+      resizer.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        applyKeyboardDelta(event.key === "ArrowRight" ? 24 : -24);
+      });
+
+      resizer.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+
+        const handle = resizer.dataset.cameraResizer;
+        const startX = event.clientX;
+        const startWidths = getTopCameraWidths();
+        row.classList.add("is-resizing");
+        document.body.classList.add("camera-column-resizing");
+        resizer.setPointerCapture?.(event.pointerId);
+
+        const onPointerMove = (moveEvent) => {
+          activeLayout = resizeTopCameraPair(handle, moveEvent.clientX - startX, startWidths);
+        };
+
+        const onPointerUp = () => {
+          row.classList.remove("is-resizing");
+          document.body.classList.remove("camera-column-resizing");
+          if (activeLayout) saveTopCameraLayout(activeLayout);
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", onPointerUp);
+          window.removeEventListener("pointercancel", onPointerUp);
+        };
+
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("pointercancel", onPointerUp);
+      });
+    });
+  }
+
+  function applyDashboardLayout(layout) {
+    const shell = document.querySelector(".app-shell");
+    if (!shell) return;
+
+    ["left", "middle", "right", "top", "upper", "lower"].forEach((key) => {
+      const value = Number(layout?.[key]);
+      if (Number.isFinite(value) && value > 0) {
+        shell.style.setProperty(`--dashboard-${key}`, `${value}fr`);
+      }
+    });
+  }
+
+  function saveDashboardLayout(layout) {
+    try {
+      localStorage.setItem(DASHBOARD_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+    } catch (error) {
+      console.warn("Failed to save dashboard layout", error);
+    }
+  }
+
+  function loadDashboardLayout() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DASHBOARD_LAYOUT_STORAGE_KEY) || "null");
+      applyDashboardLayout(saved);
+    } catch (error) {
+      console.warn("Failed to load dashboard layout", error);
+    }
+  }
+
+  function getDashboardDimensions() {
+    return {
+      left: document.querySelector(".grid-arm-kinematics")?.getBoundingClientRect().width || 0,
+      middle: document.querySelector(".grid-arm-camera")?.getBoundingClientRect().width || 0,
+      right: document.querySelector(".grid-path")?.getBoundingClientRect().width || 0,
+      top: $("topCameraRow")?.getBoundingClientRect().height || 0,
+      upper: document.querySelector(".grid-arm-camera")?.getBoundingClientRect().height || 0,
+      lower: document.querySelector(".topbar")?.getBoundingClientRect().height || 0
+    };
+  }
+
+  function resizeDashboard(handle, delta, startLayout) {
+    const layout = { ...startLayout };
+
+    if (handle === "left") {
+      [layout.left, layout.middle] = resizePair(
+        startLayout.left,
+        startLayout.middle,
+        delta,
+        DASHBOARD_MIN_SIZES.left,
+        DASHBOARD_MIN_SIZES.middle
+      );
+    } else if (handle === "right") {
+      [layout.middle, layout.right] = resizePair(
+        startLayout.middle,
+        startLayout.right,
+        delta,
+        DASHBOARD_MIN_SIZES.middle,
+        DASHBOARD_MIN_SIZES.right
+      );
+    } else if (handle === "arm-row") {
+      [layout.upper, layout.lower] = resizePair(
+        startLayout.upper,
+        startLayout.lower,
+        delta,
+        DASHBOARD_MIN_SIZES.upper,
+        DASHBOARD_MIN_SIZES.lower
+      );
+    } else if (handle === "top") {
+      const lowerTotal = startLayout.upper + startLayout.lower;
+      const [nextTop, nextLowerTotal] = resizePair(
+        startLayout.top,
+        lowerTotal,
+        delta,
+        DASHBOARD_MIN_SIZES.top,
+        DASHBOARD_MIN_SIZES.upper + DASHBOARD_MIN_SIZES.lower
+      );
+      const lowerScale = lowerTotal > 0 ? nextLowerTotal / lowerTotal : 1;
+      layout.top = nextTop;
+      layout.upper = startLayout.upper * lowerScale;
+      layout.lower = startLayout.lower * lowerScale;
+    }
+
+    applyDashboardLayout(layout);
+    handleResize();
+    return layout;
+  }
+
+  function bindDashboardResizers() {
+    loadDashboardLayout();
+
+    document.querySelectorAll(".dashboard-resizer").forEach((resizer) => {
+      let activeLayout = null;
+      const handle = resizer.dataset.dashboardResizer;
+      const horizontal = handle === "top" || handle === "arm-row";
+
+      resizer.addEventListener("keydown", (event) => {
+        const negativeKey = horizontal ? "ArrowUp" : "ArrowLeft";
+        const positiveKey = horizontal ? "ArrowDown" : "ArrowRight";
+        if (event.key !== negativeKey && event.key !== positiveKey) return;
+        event.preventDefault();
+        const layout = resizeDashboard(
+          handle,
+          event.key === positiveKey ? 24 : -24,
+          getDashboardDimensions()
+        );
+        saveDashboardLayout(layout);
+      });
+
+      resizer.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+
+        const startPosition = horizontal ? event.clientY : event.clientX;
+        const startLayout = getDashboardDimensions();
+        const resizingClass = horizontal ? "dashboard-row-resizing" : "dashboard-column-resizing";
+        resizer.classList.add("is-resizing");
+        document.body.classList.add(resizingClass);
+        resizer.setPointerCapture?.(event.pointerId);
+
+        const onPointerMove = (moveEvent) => {
+          const currentPosition = horizontal ? moveEvent.clientY : moveEvent.clientX;
+          activeLayout = resizeDashboard(handle, currentPosition - startPosition, startLayout);
+        };
+
+        const onPointerUp = () => {
+          resizer.classList.remove("is-resizing");
+          document.body.classList.remove(resizingClass);
+          if (activeLayout) saveDashboardLayout(activeLayout);
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", onPointerUp);
+          window.removeEventListener("pointercancel", onPointerUp);
+        };
+
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("pointercancel", onPointerUp);
+      });
+    });
+  }
+
   function bindEvents() {
+    bindTopCameraResizers();
+    bindDashboardResizers();
+
     dom.connectButton.addEventListener("click", connectRos);
     dom.disconnectButton.addEventListener("click", disconnectRos);
     dom.demoToggle.addEventListener("change", (event) => toggleDemo(event.target.checked));
@@ -2021,8 +2313,6 @@
 
     dom.saveTopicsButton.addEventListener("click", saveSettingsFromDialog);
     dom.resetTopicsButton.addEventListener("click", resetTopicSettings);
-    dom.clearLogButton.addEventListener("click", () => dom.eventLog.replaceChildren());
-
     document.querySelectorAll(".fullscreen-button").forEach((button) => {
       button.addEventListener("click", () => {
         const target = $(button.dataset.fullscreenTarget);

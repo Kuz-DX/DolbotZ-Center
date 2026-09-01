@@ -596,6 +596,10 @@ body[data-camera-transport="ros-compressed"] .camera-stage.has-signal .compresse
   flex-direction: column;
 }
 
+.status-panel[hidden] {
+  display: none;
+}
+
 .platform-overview {
   display: flex;
   align-items: center;
@@ -759,20 +763,6 @@ body[data-camera-transport="ros-compressed"] .camera-stage.has-signal .compresse
   font-size: 0.73rem;
 }
 
-.event-section {
-  display: flex;
-  flex: 1;
-  min-height: 110px;
-  flex-direction: column;
-  padding: 10px 12px 12px;
-  overflow: hidden;
-}
-
-.topbar > .event-section {
-  border-top: 1px solid #263544;
-  border-bottom: 1px solid #263544;
-}
-
 .section-title {
   display: flex;
   align-items: center;
@@ -790,31 +780,6 @@ body[data-camera-transport="ros-compressed"] .camera-stage.has-signal .compresse
   color: var(--muted);
   font-family: inherit;
   font-size: 0.55rem;
-}
-
-.event-log {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  overflow: auto;
-  list-style: none;
-}
-
-.event-log li {
-  display: grid;
-  grid-template-columns: 58px 1fr;
-  gap: 7px;
-  padding: 5px 0;
-  border-bottom: 1px solid rgba(121, 158, 164, 0.09);
-  color: #a9bbbd;
-  font-size: 0.68rem;
-}
-
-.event-log time {
-  color: var(--accent);
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 0.6rem;
 }
 
 .path-panel {
@@ -1385,9 +1350,14 @@ body::before {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 10px 12px;
+  grid-template-columns: minmax(248px, 0.78fr) minmax(280px, 1fr) minmax(420px, 1.45fr) minmax(280px, 1fr);
+  grid-template-rows: minmax(300px, 42vh) minmax(260px, 30vh) minmax(140px, 1fr) auto;
+  grid-template-areas:
+    "top-cameras top-cameras top-cameras top-cameras"
+    "topbar topbar arm-camera path"
+    ". . arm-kinematics path"
+    "footer footer footer footer";
+  gap: 10px;
   width: min(1920px, 100%);
   padding: 12px;
 }
@@ -1397,18 +1367,18 @@ body::before {
 }
 
 .topbar {
-  grid-column: 1;
-  grid-row: 1 / 3;
-  position: sticky;
-  top: 12px;
-  display: flex;
-  flex-direction: column;
+  grid-area: topbar;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   align-items: stretch;
   gap: 0;
-  height: calc(100vh - 24px);
-  min-height: 680px;
+  height: 100%;
+  min-height: 0;
   margin: 0;
   padding: 0;
+  overflow: hidden;
   border: 1px solid #22303e;
   background: #0c1219;
   color: #e7eef5;
@@ -1416,16 +1386,16 @@ body::before {
 }
 
 .brand {
-  gap: 12px;
-  padding: 20px 16px 18px;
+  gap: 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid #263544;
 }
 
 .team-logo {
   display: block;
   flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
+  width: 34px;
+  height: 34px;
   border: 1px solid #31567a;
   border-radius: 4px;
   background: #0a1118;
@@ -1473,10 +1443,10 @@ body::before {
 .bridge-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 6px;
   align-items: stretch;
   justify-content: stretch;
-  padding: 18px 14px;
+  padding: 10px 12px;
 }
 
 .bridge-field {
@@ -1489,7 +1459,7 @@ body::before {
 }
 
 .bridge-field input {
-  height: 38px;
+  height: 32px;
   border-color: #2b3c4d;
   background: #080d13;
   color: #dce7f0;
@@ -1517,6 +1487,21 @@ body::before {
   border-color: #2c3d4d;
   background: #151e28;
   color: #dce6ee;
+}
+
+.topbar .button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+}
+
+.topbar .icon-button {
+  width: 30px;
+  height: 30px;
+}
+
+.topbar .switch {
+  min-height: 30px;
 }
 
 .button:hover,
@@ -1559,23 +1544,24 @@ body::before {
 .system-summary {
   display: grid;
   justify-items: stretch;
-  gap: 10px;
-  margin-top: auto;
-  padding: 16px 14px;
+  gap: 7px;
+  margin-top: 0;
+  padding: 10px 12px;
   border-top: 1px solid #263544;
 }
 
 .system-clock {
-  padding-bottom: 10px;
+  padding-bottom: 7px;
   border-bottom: 1px solid #22313f;
   color: #dce7f0;
-  font-size: 1.35rem;
+  font-size: 1.08rem;
   text-align: left;
 }
 
 .connection-badge {
   min-width: 0;
   justify-content: flex-start;
+  padding: 5px 9px;
   border: 0;
   border-left: 4px solid currentColor;
   background: rgba(255, 255, 255, 0.035);
@@ -1593,9 +1579,56 @@ body::before {
 }
 
 .dashboard-grid {
-  grid-column: 2;
-  grid-row: 1;
-  gap: 10px;
+  display: contents;
+}
+
+.top-camera-row {
+  grid-area: top-cameras;
+  display: grid;
+  grid-template-columns:
+    minmax(220px, var(--top-camera-left, 1fr))
+    10px
+    minmax(420px, var(--top-camera-main, 2.6fr))
+    10px
+    minmax(220px, var(--top-camera-right, 1fr));
+  grid-template-areas: "cam1 resize-left main resize-right cam2";
+  min-width: 0;
+  min-height: 0;
+}
+
+.camera-column-resizer {
+  position: relative;
+  z-index: 8;
+  min-width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.camera-column-resizer::before {
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  background: #263847;
+  opacity: 0.72;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+
+.camera-column-resizer:hover::before,
+.camera-column-resizer:focus-visible::before,
+.top-camera-row.is-resizing .camera-column-resizer::before {
+  background: #4da3ff;
+  opacity: 1;
+}
+
+.camera-column-resizer[data-camera-resizer="left"] { grid-area: resize-left; }
+.camera-column-resizer[data-camera-resizer="right"] { grid-area: resize-right; }
+
+body.camera-column-resizing {
+  cursor: col-resize;
+}
+
+body.camera-column-resizing * {
+  user-select: none;
 }
 
 .panel {
@@ -1721,6 +1754,24 @@ body::before {
   background: #131c25;
 }
 
+.robot-quick-status {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #263544;
+}
+
+.robot-quick-status .status-card,
+.robot-quick-status .telemetry-item {
+  min-height: 48px;
+}
+
+.telemetry-item--dps strong {
+  color: #68b5ff;
+  font-size: 0.86rem;
+}
+
 .status-card--ok { border-color: #2f735e; }
 .status-card--warning { border-color: #836234; }
 .status-card--danger { border-color: #843f48; }
@@ -1733,14 +1784,12 @@ body::before {
   background: #121a23;
 }
 
-.event-log li,
 .joint-state-row,
 .topic-health-row {
   border-color: rgba(112, 148, 181, 0.12);
   color: #9aabbb;
 }
 
-.event-log time,
 .joint-state-row .joint-angle,
 .health-score {
   color: #63b3ff;
@@ -1761,8 +1810,7 @@ body::before {
 }
 
 .footer-bar {
-  grid-column: 2;
-  grid-row: 2;
+  grid-area: footer;
   min-height: 24px;
   padding: 2px 4px 0;
   color: #617283;
@@ -1833,6 +1881,7 @@ body::before {
     top: auto;
     display: grid;
     grid-template-columns: minmax(240px, 1fr) minmax(480px, 1.7fr) 190px;
+    grid-template-rows: auto auto;
     align-items: center;
     gap: 14px;
     width: 100%;
@@ -1840,6 +1889,7 @@ body::before {
     min-height: 78px;
     margin-bottom: 10px;
     padding: 0 14px;
+    overflow: visible;
   }
 
   .topbar > .brand {
@@ -1850,13 +1900,6 @@ body::before {
   .topbar > .bridge-controls {
     grid-column: 2;
     grid-row: 1;
-  }
-
-  .topbar > .event-section {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    height: 132px;
-    padding: 10px 0 12px;
   }
 
   .topbar > .system-summary {
@@ -1892,13 +1935,22 @@ body::before {
   }
 
   .dashboard-grid {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: 300px 340px 560px 300px;
+    grid-template-rows: 300px 340px 300px 300px;
     grid-template-areas:
       "main main"
       "cam1 cam2"
-      "status path"
-      "arm-camera arm-kinematics";
+      "arm-camera path"
+      "arm-kinematics path";
+  }
+
+  .top-camera-row {
+    display: contents;
+  }
+
+  .camera-column-resizer {
+    display: none;
   }
 
   .footer-bar {
@@ -1909,17 +1961,21 @@ body::before {
 @media (max-width: 900px) {
   .topbar {
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
     padding: 10px 14px;
+  }
+
+  .top-camera-row {
+    display: contents;
+  }
+
+  .camera-column-resizer {
+    display: none;
   }
 
   .topbar > .bridge-controls {
     grid-column: 1;
     grid-row: 2;
-  }
-
-  .topbar > .event-section {
-    grid-column: 1;
-    grid-row: 3;
   }
 
   .brand {
@@ -1961,4 +2017,221 @@ body::before {
   .path-panel {
     min-height: 680px;
   }
+}
+
+/* Viewport-bound, user-resizable dashboard layout. */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  height: 100dvh;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--dashboard-left, 1fr))
+    10px
+    minmax(0, var(--dashboard-middle, 0.82fr))
+    10px
+    minmax(0, var(--dashboard-right, 0.9fr));
+  grid-template-rows:
+    minmax(0, var(--dashboard-top, 1.45fr))
+    10px
+    minmax(0, var(--dashboard-upper, 1fr))
+    10px
+    minmax(0, var(--dashboard-lower, 0.58fr))
+    24px;
+  grid-template-areas:
+    "top-cameras top-cameras top-cameras top-cameras top-cameras"
+    "resize-top resize-top resize-top resize-top resize-top"
+    "arm-kinematics resize-left arm-camera resize-right path"
+    "arm-kinematics resize-left resize-arm-row resize-right path"
+    "arm-kinematics resize-left topbar resize-right path"
+    "footer footer footer footer footer";
+  gap: 0;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.dashboard-grid {
+  display: contents;
+}
+
+.top-camera-row {
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--top-camera-left, 1fr))
+    10px
+    minmax(0, var(--top-camera-main, 2.6fr))
+    10px
+    minmax(0, var(--top-camera-right, 1fr));
+  min-width: 0;
+  min-height: 0;
+}
+
+.topbar {
+  grid-area: topbar;
+  position: relative;
+  top: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  width: auto;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.topbar > .brand,
+.topbar > .bridge-controls,
+.topbar > .robot-quick-status {
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.topbar > .brand {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "logo title"
+    "summary summary";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #263544;
+}
+
+.topbar > .brand > .team-logo {
+  grid-area: logo;
+}
+
+.topbar > .brand > div:not(.system-summary) {
+  grid-area: title;
+  min-width: 0;
+}
+
+.topbar > .bridge-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  padding: 10px 12px;
+}
+
+.topbar .system-summary {
+  grid-area: summary;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #263544;
+}
+
+.topbar .system-clock {
+  padding: 8px 0 7px;
+  border-bottom: 1px solid #22313f;
+  text-align: left;
+}
+
+.panel,
+.path-panel,
+.status-panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.grid-arm-camera { grid-area: arm-camera; }
+.grid-arm-kinematics { grid-area: arm-kinematics; }
+.grid-path { grid-area: path; }
+
+.dashboard-resizer,
+.camera-column-resizer {
+  position: relative;
+  z-index: 10;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  touch-action: none;
+  outline: none;
+}
+
+.dashboard-resizer--left {
+  grid-area: resize-left;
+  cursor: col-resize;
+}
+
+.dashboard-resizer--right {
+  grid-area: resize-right;
+  cursor: col-resize;
+}
+
+.dashboard-resizer--top {
+  grid-area: resize-top;
+  cursor: row-resize;
+}
+
+.dashboard-resizer--arm-row {
+  grid-area: resize-arm-row;
+  cursor: row-resize;
+}
+
+.dashboard-resizer::before {
+  content: "";
+  position: absolute;
+  background: #263847;
+  opacity: 0.72;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+
+.dashboard-resizer--left::before,
+.dashboard-resizer--right::before {
+  inset: 0 4px;
+}
+
+.dashboard-resizer--top::before,
+.dashboard-resizer--arm-row::before {
+  inset: 4px 0;
+}
+
+.dashboard-resizer:hover::before,
+.dashboard-resizer:focus-visible::before,
+.dashboard-resizer.is-resizing::before {
+  background: #4da3ff;
+  opacity: 1;
+}
+
+body.dashboard-column-resizing,
+body.dashboard-column-resizing * {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.dashboard-row-resizing,
+body.dashboard-row-resizing * {
+  cursor: row-resize;
+  user-select: none;
+}
+
+.footer-bar {
+  grid-area: footer;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
 }
