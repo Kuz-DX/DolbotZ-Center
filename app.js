@@ -108,6 +108,75 @@
     }
   };
 
+  const MAX_DETECTION_BOXES_PER_TOPIC = 80;
+  const DETECTION_TOPICS = {
+    springIfofLeftDetections: {
+      label: "봄 IFOF 감지 (좌측)",
+      name: "/mission/spring_ifof/left/detections",
+      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+      staleMs: 1200,
+      throttleRate: 0,
+      cameraKey: "subCamera1",
+      overlayLabel: "SPRING IFOF",
+      color: "#26d9ff"
+    },
+    springIfofRightDetections: {
+      label: "봄 IFOF 감지 (우측)",
+      name: "/mission/spring_ifof/right/detections",
+      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+      staleMs: 1200,
+      throttleRate: 0,
+      cameraKey: "subCamera2",
+      overlayLabel: "SPRING IFOF",
+      color: "#26d9ff"
+    },
+    fallMarkerLeftDetections: {
+      label: "가을 마커 감지 (좌측)",
+      name: "/mission/fall_marker/left/detections",
+      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+      staleMs: 1200,
+      throttleRate: 0,
+      cameraKey: "subCamera1",
+      overlayLabel: "FALL MARKER",
+      color: "#ffb84a"
+    },
+    fallMarkerRightDetections: {
+      label: "가을 마커 감지 (우측)",
+      name: "/mission/fall_marker/right/detections",
+      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+      staleMs: 1200,
+      throttleRate: 0,
+      cameraKey: "subCamera2",
+      overlayLabel: "FALL MARKER",
+      color: "#ffb84a"
+    },
+    summerTrafficLeftDetections: {
+      label: "여름 신호등 감지 (좌측)",
+      name: "/mission/summer_traffic/left/detections",
+      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+      staleMs: 1200,
+      throttleRate: 0,
+      cameraKey: "subCamera1",
+      overlayLabel: "SUMMER TRAFFIC",
+      color: "#68ef8b"
+    },
+    armSummerSupplyDetections: {
+      label: "여름 보급품 감지 (로봇팔)",
+      name: "/arm/summer_supply/detections",
+      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+      staleMs: 1200,
+      throttleRate: 0,
+      cameraKey: "armCamera",
+      overlayLabel: "SUMMER SUPPLY",
+      color: "#ff71d0"
+    }
+  };
+
+  Object.values(DETECTION_TOPICS).forEach((config) => {
+    config.trackHealth = false;
+  });
+  Object.assign(DEFAULT_TOPICS, DETECTION_TOPICS);
+
   if (CAMERA_TRANSPORT === "ros-compressed") {
     Object.assign(DEFAULT_TOPICS, COMPRESSED_CAMERA_TOPICS);
   }
@@ -171,6 +240,10 @@
     latestPath: null,
     latestOdom: null,
     latestImu: null,
+    latestDetections: new Map(),
+    detectionExpiryTimers: new Map(),
+    pendingDetectionCameras: new Set(),
+    detectionAnimationFrameId: null,
     demoFrameId: null,
     demoStartedAt: 0,
     resizeObserver: null
@@ -242,6 +315,7 @@
     subCamera1: {
       video: $("subCamera1Video"),
       image: $("subCamera1Image"),
+      detectionOverlay: $("subCamera1DetectionOverlay"),
       stage: $("subCamera1Stage"),
       rate: $("subCamera1Rate"),
       age: $("subCamera1Age"),
@@ -250,6 +324,7 @@
     subCamera2: {
       video: $("subCamera2Video"),
       image: $("subCamera2Image"),
+      detectionOverlay: $("subCamera2DetectionOverlay"),
       stage: $("subCamera2Stage"),
       rate: $("subCamera2Rate"),
       age: $("subCamera2Age"),
@@ -258,6 +333,7 @@
     armCamera: {
       video: $("armCameraVideo"),
       image: $("armCameraImage"),
+      detectionOverlay: $("armCameraDetectionOverlay"),
       stage: $("armCameraStage"),
       rate: $("armCameraRate"),
       age: $("armCameraAge"),
@@ -382,7 +458,8 @@
 
   function initTopicStats() {
     state.topicStats.clear();
-    Object.keys(state.topicConfig).forEach((key) => {
+    Object.entries(state.topicConfig).forEach(([key, config]) => {
+      if (config.trackHealth === false) return;
       state.topicStats.set(key, {
         count: 0,
         lastSeen: 0,
@@ -442,6 +519,7 @@
       state.connected = false;
       state.connecting = false;
       clearSubscriptions();
+      clearDetectionData();
       setConnectionState("offline", "DISCONNECTED");
       if (wasConnected) addLog("rosbridge 연결 종료", "warning");
     });
@@ -457,6 +535,7 @@
 
   function disconnectRos() {
     clearSubscriptions();
+    clearDetectionData();
     if (state.ros) {
       try {
         state.ros.close();
@@ -480,6 +559,7 @@
 
   function subscribeAll() {
     clearSubscriptions();
+    clearDetectionData();
     initTopicStats();
 
     subscribeTopic("jointStates", handleJointState);
@@ -494,6 +574,9 @@
     subscribeTopic("sensorsConnected", handleSensorsConnected);
     subscribeTopic("missionStatus", handleMissionStatus);
     subscribeTopic("diagnostics", handleDiagnostics);
+    Object.keys(DETECTION_TOPICS).forEach((key) => {
+      subscribeTopic(key, handleDetections);
+    });
     if (CAMERA_TRANSPORT === "ros-compressed") {
       Object.keys(COMPRESSED_CAMERA_TOPICS).forEach((key) => {
         subscribeTopic(key, handleCompressedImage);
@@ -508,14 +591,15 @@
     if (!config?.name || !state.ros) return;
 
     try {
-      const topic = new ROSLIB.Topic({
+      const topicOptions = {
         ros: state.ros,
         name: config.name,
-        messageType: config.type,
-        throttle_rate: 50,
+        throttle_rate: config.throttleRate ?? 50,
         queue_length: 1,
         compression: "none"
-      });
+      };
+      if (config.type) topicOptions.messageType = config.type;
+      const topic = new ROSLIB.Topic(topicOptions);
 
       topic.subscribe((message) => {
         markTopic(key);
@@ -780,6 +864,7 @@
       if (player.stopped) return;
       binding.stage.classList.add("has-signal");
       binding.age.textContent = "LIVE";
+      scheduleDetectionOverlay(key);
       window.clearTimeout(player.connectTimer);
       player.connectTimer = null;
       if (!player.wasPlaying) addLog(`${config.label} 미디어 스트림 연결`);
@@ -793,6 +878,7 @@
     const countFrame = () => {
       if (player.stopped) return;
       markMediaFrame(key);
+      if (binding.detectionOverlay && hasFreshDetections(key)) scheduleDetectionOverlay(key);
       binding.video.requestVideoFrameCallback?.(countFrame);
     };
     binding.video.requestVideoFrameCallback?.(countFrame);
@@ -1119,6 +1205,289 @@
       });
   }
 
+  function firstFinite(...values) {
+    for (const value of values) {
+      if (value === null || value === undefined || value === "") continue;
+      const number = Number(value);
+      if (Number.isFinite(number)) return number;
+    }
+    return null;
+  }
+
+  function detectionItems(message) {
+    const candidates = [
+      message?.detections,
+      message?.boxes,
+      message?.bounding_boxes,
+      message?.objects,
+      message?.data
+    ];
+    return candidates.find(Array.isArray) || [];
+  }
+
+  function detectionResult(detection) {
+    const results = Array.isArray(detection?.results) ? detection.results : [];
+    const best = results.reduce((selected, result) => {
+      const score = firstFinite(result?.hypothesis?.score, result?.score, result?.confidence, result?.probability);
+      if (!selected || (score ?? -Infinity) > (selected.score ?? -Infinity)) {
+        return { result, score };
+      }
+      return selected;
+    }, null);
+    const result = best?.result;
+    const label = detection?.class_name
+      ?? detection?.label
+      ?? detection?.class_id
+      ?? result?.hypothesis?.class_id
+      ?? result?.class_id
+      ?? detection?.id
+      ?? result?.id
+      ?? "";
+    const score = best?.score ?? firstFinite(detection?.score, detection?.confidence, detection?.probability);
+    return { label: String(label ?? "").trim(), score };
+  }
+
+  function parseDetectionBox(detection) {
+    const box = detection?.bbox ?? detection?.bounding_box ?? detection?.box ?? detection;
+    if (!box || typeof box !== "object") return null;
+
+    const arrayBox = Array.isArray(box)
+      ? box
+      : Array.isArray(box.xyxy) ? box.xyxy
+        : Array.isArray(detection?.xyxy) ? detection.xyxy : null;
+    let x;
+    let y;
+    let width;
+    let height;
+
+    if (arrayBox?.length >= 4) {
+      const [xMin, yMin, xMax, yMax] = arrayBox.map(Number);
+      if ([xMin, yMin, xMax, yMax].every(Number.isFinite)) {
+        x = xMin;
+        y = yMin;
+        width = xMax - xMin;
+        height = yMax - yMin;
+      }
+    }
+
+    if (![x, y, width, height].every(Number.isFinite)) {
+      const xMin = firstFinite(box.xmin, box.x_min, box.left, box.x1);
+      const yMin = firstFinite(box.ymin, box.y_min, box.top, box.y1);
+      const xMax = firstFinite(box.xmax, box.x_max, box.right, box.x2);
+      const yMax = firstFinite(box.ymax, box.y_max, box.bottom, box.y2);
+      if ([xMin, yMin, xMax, yMax].every(Number.isFinite)) {
+        x = xMin;
+        y = yMin;
+        width = xMax - xMin;
+        height = yMax - yMin;
+      }
+    }
+
+    if (![x, y, width, height].every(Number.isFinite)) {
+      const center = box.center?.position ?? box.center;
+      const centerX = firstFinite(center?.x, box.center_x, box.cx);
+      const centerY = firstFinite(center?.y, box.center_y, box.cy);
+      const sizeX = firstFinite(box.size_x, box.width, box.w, box.size?.x, box.size?.width);
+      const sizeY = firstFinite(box.size_y, box.height, box.h, box.size?.y, box.size?.height);
+      if ([centerX, centerY, sizeX, sizeY].every(Number.isFinite)) {
+        x = centerX - sizeX / 2;
+        y = centerY - sizeY / 2;
+        width = sizeX;
+        height = sizeY;
+      }
+    }
+
+    if (![x, y, width, height].every(Number.isFinite)) {
+      x = firstFinite(box.x, box.left);
+      y = firstFinite(box.y, box.top);
+      width = firstFinite(box.width, box.w);
+      height = firstFinite(box.height, box.h);
+    }
+
+    if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+    return { x, y, width, height, ...detectionResult(detection) };
+  }
+
+  function detectionSourceSize(message) {
+    return {
+      width: firstFinite(
+        message?.image_width,
+        message?.source_width,
+        message?.image?.width,
+        message?.source?.width
+      ),
+      height: firstFinite(
+        message?.image_height,
+        message?.source_height,
+        message?.image?.height,
+        message?.source?.height
+      )
+    };
+  }
+
+  function cameraSourceSize(binding, detectionState) {
+    const width = detectionState?.sourceWidth
+      || binding.image?.naturalWidth
+      || binding.video?.videoWidth
+      || 0;
+    const height = detectionState?.sourceHeight
+      || binding.image?.naturalHeight
+      || binding.video?.videoHeight
+      || 0;
+    return { width, height };
+  }
+
+  function drawDetectionOverlay(cameraKey) {
+    const binding = cameraBindings[cameraKey];
+    if (!binding?.detectionOverlay) return;
+
+    const { ctx, width, height } = prepareCanvas(binding.detectionOverlay, 1);
+    ctx.clearRect(0, 0, width, height);
+    if (state.demo || width <= 1 || height <= 1) return;
+
+    const now = Date.now();
+    Object.entries(DETECTION_TOPICS).forEach(([topicKey, config]) => {
+      if (config.cameraKey !== cameraKey) return;
+      const detectionState = state.latestDetections.get(topicKey);
+      if (!detectionState || now - detectionState.receivedAt > config.staleMs) return;
+
+      const source = cameraSourceSize(binding, detectionState);
+      if (source.width <= 0 || source.height <= 0) return;
+
+      const scale = Math.max(width / source.width, height / source.height);
+      const offsetX = (width - source.width * scale) / 2;
+      const offsetY = (height - source.height * scale) / 2;
+
+      detectionState.boxes.forEach((box) => {
+        const normalized = Math.max(
+          Math.abs(box.x),
+          Math.abs(box.y),
+          Math.abs(box.width),
+          Math.abs(box.height)
+        ) <= 1.5;
+        const sourceX = normalized ? box.x * source.width : box.x;
+        const sourceY = normalized ? box.y * source.height : box.y;
+        const sourceWidth = normalized ? box.width * source.width : box.width;
+        const sourceHeight = normalized ? box.height * source.height : box.height;
+        const x = offsetX + sourceX * scale;
+        const y = offsetY + sourceY * scale;
+        const boxWidth = sourceWidth * scale;
+        const boxHeight = sourceHeight * scale;
+
+        if (x + boxWidth < 0 || y + boxHeight < 0 || x > width || y > height) return;
+
+        ctx.strokeStyle = config.color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, boxWidth, boxHeight);
+
+        const scoreText = Number.isFinite(box.score)
+          ? ` ${box.score <= 1 ? Math.round(box.score * 100) : box.score.toFixed(1)}${box.score <= 1 ? "%" : ""}`
+          : "";
+        const classText = box.label ? ` · ${box.label}` : "";
+        const text = `${config.overlayLabel}${classText}${scoreText}`;
+        ctx.font = '10px "IBM Plex Mono", monospace';
+        const labelWidth = Math.min(width, ctx.measureText(text).width + 10);
+        const labelHeight = 18;
+        const labelX = Math.max(0, Math.min(width - labelWidth, x));
+        const labelY = y >= labelHeight ? y - labelHeight : Math.min(height - labelHeight, y);
+
+        ctx.fillStyle = "rgba(4, 9, 13, 0.86)";
+        ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
+        ctx.fillStyle = config.color;
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, labelX + 5, labelY + labelHeight / 2, labelWidth - 10);
+      });
+    });
+  }
+
+  function hasFreshDetections(cameraKey) {
+    const now = Date.now();
+    return Object.entries(DETECTION_TOPICS).some(([topicKey, config]) => {
+      const detectionState = state.latestDetections.get(topicKey);
+      return config.cameraKey === cameraKey
+        && detectionState?.boxes?.length > 0
+        && now - detectionState.receivedAt <= config.staleMs;
+    });
+  }
+
+  function scheduleDetectionOverlay(cameraKey) {
+    if (!cameraBindings[cameraKey]?.detectionOverlay) return;
+    state.pendingDetectionCameras.add(cameraKey);
+    if (state.detectionAnimationFrameId !== null) return;
+
+    state.detectionAnimationFrameId = window.requestAnimationFrame(() => {
+      state.detectionAnimationFrameId = null;
+      const cameraKeys = [...state.pendingDetectionCameras];
+      state.pendingDetectionCameras.clear();
+      cameraKeys.forEach(drawDetectionOverlay);
+    });
+  }
+
+  function drawAllDetectionOverlays() {
+    ["subCamera1", "subCamera2", "armCamera"].forEach(scheduleDetectionOverlay);
+  }
+
+  function clearDetectionData() {
+    state.detectionExpiryTimers.forEach((timer) => window.clearTimeout(timer));
+    state.detectionExpiryTimers.clear();
+    state.latestDetections.clear();
+    state.pendingDetectionCameras.clear();
+    window.cancelAnimationFrame(state.detectionAnimationFrameId);
+    state.detectionAnimationFrameId = null;
+    Object.values(cameraBindings).forEach((binding) => {
+      if (!binding.detectionOverlay) return;
+      binding.detectionSourceWidth = 0;
+      binding.detectionSourceHeight = 0;
+      const { ctx, width, height } = prepareCanvas(binding.detectionOverlay, 1);
+      ctx.clearRect(0, 0, width, height);
+    });
+  }
+
+  function ensureDetectionExpiry(key, config) {
+    if (state.detectionExpiryTimers.has(key)) return;
+
+    const expire = () => {
+      const current = state.latestDetections.get(key);
+      if (!current) {
+        state.detectionExpiryTimers.delete(key);
+        return;
+      }
+
+      const remaining = config.staleMs - (Date.now() - current.receivedAt);
+      if (remaining > 0) {
+        const timer = window.setTimeout(expire, remaining + 20);
+        state.detectionExpiryTimers.set(key, timer);
+        return;
+      }
+
+      state.latestDetections.delete(key);
+      state.detectionExpiryTimers.delete(key);
+      scheduleDetectionOverlay(config.cameraKey);
+    };
+
+    const timer = window.setTimeout(expire, config.staleMs + 20);
+    state.detectionExpiryTimers.set(key, timer);
+  }
+
+  function handleDetections(message, key) {
+    const config = DETECTION_TOPICS[key];
+    if (!config) return;
+    const source = detectionSourceSize(message);
+    const boxes = detectionItems(message)
+      .slice(0, MAX_DETECTION_BOXES_PER_TOPIC)
+      .map(parseDetectionBox)
+      .filter(Boolean);
+    const receivedAt = Date.now();
+    state.latestDetections.set(key, {
+      boxes,
+      receivedAt,
+      sourceWidth: source.width,
+      sourceHeight: source.height
+    });
+    ensureDetectionExpiry(key, config);
+    scheduleDetectionOverlay(config.cameraKey);
+  }
+
   function compressedImageMimeType(format) {
     const normalized = String(format || "jpeg").toLowerCase();
     if (normalized.includes("compresseddepth")) return "";
@@ -1144,6 +1513,9 @@
     binding.image.onload = () => {
       binding.stage.classList.add("has-signal");
       binding.age.textContent = "LIVE";
+      binding.detectionSourceWidth = binding.image.naturalWidth;
+      binding.detectionSourceHeight = binding.image.naturalHeight;
+      if (hasFreshDetections(key)) scheduleDetectionOverlay(key);
     };
     binding.image.onerror = () => {
       binding.stage.classList.remove("has-signal");
@@ -1206,9 +1578,9 @@
     return total;
   }
 
-  function prepareCanvas(canvas) {
+  function prepareCanvas(canvas, maxDpr = 2) {
     const rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
     const width = Math.max(1, Math.round(rect.width * dpr));
     const height = Math.max(1, Math.round(rect.height * dpr));
 
@@ -1336,7 +1708,7 @@
 
     ctx.fillStyle = "rgba(231, 238, 245, 0.68)";
     ctx.font = '10px "IBM Plex Mono", monospace';
-    ctx.fillText("+X", margin, originY - 7);
+    ctx.fillText("+X", width - margin, originY - 7);
     ctx.fillText("+Z", originX + 7, margin + 8);
 
     ctx.restore();
@@ -1528,7 +1900,7 @@
       const title = document.createElement("strong");
       const type = document.createElement("small");
       title.textContent = config.label;
-      type.textContent = config.type;
+      type.textContent = config.typeLabel || config.type || "ROS graph 자동 감지";
       label.append(title, type);
 
       const input = document.createElement("input");
@@ -1970,6 +2342,7 @@
   }
 
   function resetDisplayedData() {
+    clearDetectionData();
     document.querySelectorAll("canvas.demo-camera").forEach((canvas) => canvas.remove());
     Object.values(cameraBindings).forEach((binding) => {
       binding.stage.classList.remove("has-signal");
@@ -2031,6 +2404,7 @@
   function handleResize() {
     if (state.latestJointState) drawArmKinematics(state.latestJointState);
     if (state.latestPath) drawPath(state.latestPath);
+    drawAllDetectionOverlays();
   }
 
   function applyTopCameraLayout(layout) {

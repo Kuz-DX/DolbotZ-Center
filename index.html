@@ -66,7 +66,7 @@
         <div class="panel-heading">
           <div>
             <p>AUXILIARY VISION / 01</p>
-            <h2>SUB CAMERA 1</h2>
+            <h2>LEFT</h2>
           </div>
           <div class="panel-tools">
             <span id="subCamera1Rate" class="rate-badge">0.0 Hz</span>
@@ -76,6 +76,7 @@
         <div id="subCamera1Stage" class="camera-stage">
           <video id="subCamera1Video" aria-label="서브 카메라 1 영상" muted autoplay playsinline></video>
           <img id="subCamera1Image" class="compressed-frame" alt="서브 카메라 1 ROS 압축 영상" />
+          <canvas id="subCamera1DetectionOverlay" class="camera-detection-overlay" aria-hidden="true"></canvas>
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
@@ -95,7 +96,7 @@
         <div class="panel-heading">
           <div>
             <p>PRIMARY VISION</p>
-            <h2>MAIN CAMERA</h2>
+            <h2>Drive</h2>
           </div>
           <div class="panel-tools">
             <span id="mainCameraRate" class="rate-badge rate-badge--accent">0.0 Hz</span>
@@ -129,7 +130,7 @@
         <div class="panel-heading">
           <div>
             <p>AUXILIARY VISION / 02</p>
-            <h2>SUB CAMERA 2</h2>
+            <h2>Right</h2>
           </div>
           <div class="panel-tools">
             <span id="subCamera2Rate" class="rate-badge">0.0 Hz</span>
@@ -139,6 +140,7 @@
         <div id="subCamera2Stage" class="camera-stage">
           <video id="subCamera2Video" aria-label="서브 카메라 2 영상" muted autoplay playsinline></video>
           <img id="subCamera2Image" class="compressed-frame" alt="서브 카메라 2 ROS 압축 영상" />
+          <canvas id="subCamera2DetectionOverlay" class="camera-detection-overlay" aria-hidden="true"></canvas>
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
@@ -260,6 +262,7 @@
         <div id="armCameraStage" class="camera-stage camera-stage--arm">
           <video id="armCameraVideo" aria-label="로봇팔 카메라 영상" muted autoplay playsinline></video>
           <img id="armCameraImage" class="compressed-frame" alt="로봇팔 카메라 ROS 압축 영상" />
+          <canvas id="armCameraDetectionOverlay" class="camera-detection-overlay" aria-hidden="true"></canvas>
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
