@@ -131,6 +131,29 @@ MediaMTX 주소 설정은 숨겨집니다. 컬러 JPEG/PNG/WebP만 표시하며
 rosbridge를 통과하므로 네트워크 사용량과 브라우저 CPU 부하는 기본 MediaMTX
 모드보다 큽니다.
 
+### Detection 바운딩박스 오버레이
+
+| UI 화면 | Detection 토픽 |
+|---|---|
+| LEFT | `/mission/spring_ifof/left/detections` |
+| LEFT | `/mission/fall_marker/left/detections` |
+| LEFT | `/mission/summer_traffic/left/detections` |
+| Right | `/mission/spring_ifof/right/detections` |
+| Right | `/mission/fall_marker/right/detections` |
+| 로봇팔 | `/arm/summer_supply/detections` |
+
+메시지 타입은 rosbridge가 현재 ROS graph에서 자동 감지합니다. 표준
+`vision_msgs/msg/Detection2DArray`의 `detections[].bbox` 형식과
+`xmin/ymin/xmax/ymax`, `left/top/width/height`, `xyxy` 계열 필드를 읽습니다.
+픽셀 좌표와 0~1 정규화 좌표를 모두 화면의 `object-fit: cover` 영상 영역에 맞춰
+변환합니다.
+
+Detection 메시지는 throttle 없이 받고, 활성 박스가 있는 동안 실제 카메라
+프레임마다 최신 좌표로 캔버스를 갱신합니다. 같은 브라우저 페인트 주기에 들어온
+영상·detection 이벤트는 `requestAnimationFrame`으로 화면별 한 번의 그리기로
+합칩니다. 토픽당 최대 80개 박스만 처리하고 1.2초 이상 갱신되지 않은 박스는
+예약 타이머로 자동 제거합니다.
+
 ## 6. MediaMTX 실행
 
 로봇 PC 또는 같은 LAN의 미디어 PC에서 실행합니다.

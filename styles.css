@@ -469,6 +469,15 @@ button {
   display: none;
 }
 
+.camera-detection-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 body[data-camera-transport="ros-compressed"] .camera-stage.has-signal video {
   display: none;
 }
