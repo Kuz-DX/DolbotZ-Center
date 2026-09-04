@@ -312,7 +312,7 @@
         </div>
       </section>
 
-      <section class="panel arm-kinematics-panel grid-arm-kinematics">
+      <section id="armKinematicsPanel" class="panel arm-kinematics-panel grid-arm-kinematics">
         <div class="panel-heading">
           <div>
             <p>MANIPULATOR / FORWARD KINEMATICS</p>
@@ -326,6 +326,10 @@
         <div class="arm-stage">
           <canvas id="armKinematicsCanvas"></canvas>
           <div id="armPlaceholder" class="canvas-placeholder">/joint_states 토픽 대기 중</div>
+          <div id="gripperHoldStatus" class="gripper-hold-status hidden" role="status">
+            <span aria-hidden="true"></span>파지 성공
+          </div>
+          <div id="gripperHoldFlash" class="gripper-hold-flash hidden" role="status">파지 성공!!</div>
           <div class="arm-metrics">
             <span>PLANE <strong>X-Z</strong></span>
             <span>JOINTS <strong id="armJointCount">0</strong></span>
