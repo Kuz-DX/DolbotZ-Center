@@ -41,6 +41,35 @@ web_ui_topics:
       - "elbow_joint"
       - "wrist_joint"
 
+  gripperHoldFinished:
+    label: "MANUAL_EE 파지 완료"
+    name: "/gripper_hold_fin"
+    type: "std_msgs/msg/Bool"
+    stale_ms: 5000
+    match: "direct"
+    publisher: "robot_arm_bringup/gripper_hold_fin.py"
+    source: "src/arm/robot_arm_bringup/scripts/gripper_hold_fin.py"
+    valid_mode: "MANUAL_EE"
+    true_when:
+      position: "gripper_joint.position >= 1.8294"
+      effort_fallback: "abs(gripper_joint.effort) > 130.0"
+      operator: "OR"
+    ui_outputs:
+      - "0.5초간 로봇팔 관절 위치 패널 녹색 점등"
+      - "0.5초간 중앙 파지 성공!! 표시"
+      - "true 유지 중 좌상단 파지 성공 표시"
+      - "MANUAL_EE 미수신 상태 확인 불가 표시"
+
+  controlMode:
+    label: "제어 모드"
+    name: "/control/mode"
+    type: "std_msgs/msg/String"
+    stale_ms: 5000
+    match: "direct"
+    ui_outputs:
+      - "MANUAL_EE 파지 상태 표시 활성화"
+      - "MANUAL_EE 이탈 시 파지 표시 초기화"
+
   armTargetPointBase:
     label: "로봇팔 목표 좌표"
     name: "/arm/target_point_base"

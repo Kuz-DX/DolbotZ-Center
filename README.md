@@ -99,6 +99,8 @@ sudo apt install ros-humble-compressed-image-transport
 | 용도 | 기본 토픽 | 메시지 타입 |
 |---|---|---|
 | 로봇팔 관절 | `/joint_states` | `sensor_msgs/msg/JointState` |
+| MANUAL_EE 파지 완료 | `/gripper_hold_fin` | `std_msgs/msg/Bool` |
+| 제어 모드 | `/control/mode` | `std_msgs/msg/String` |
 | 로봇팔 목표 X·Z | `/arm/target_point_base` | `geometry_msgs/msg/PointStamped` |
 | 생성 경로 | `/path` | `nav_msgs/msg/Path` |
 | 오도메트리 | `/odometry/filtered` | `nav_msgs/msg/Odometry` |

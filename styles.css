@@ -842,6 +842,28 @@ body[data-camera-transport="ros-compressed"] .camera-stage.has-signal .compresse
   box-shadow: 0 0 12px 3px rgba(65, 255, 79, 0.72);
 }
 
+.gripper-hold-unavailable {
+  position: absolute;
+  z-index: 3;
+  top: 16px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #ffd34d;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-shadow: 0 0 9px rgba(255, 196, 45, 0.55);
+}
+
+.gripper-hold-unavailable span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ffd34d;
+  box-shadow: 0 0 10px 2px rgba(255, 196, 45, 0.55);
+}
+
 .gripper-hold-flash {
   position: absolute;
   z-index: 4;
@@ -864,6 +886,7 @@ body[data-camera-transport="ros-compressed"] .camera-stage.has-signal .compresse
 }
 
 .gripper-hold-status.hidden,
+.gripper-hold-unavailable.hidden,
 .gripper-hold-flash.hidden {
   display: none;
 }
