@@ -13,6 +13,18 @@
       type: "sensor_msgs/msg/JointState",
       staleMs: 2000
     },
+    gripperHoldFinished: {
+      label: "파지 성공",
+      name: "/gripper_hold_fin",
+      type: "std_msgs/msg/Bool",
+      staleMs: 5000
+    },
+    controlMode: {
+      label: "제어 모드",
+      name: "/control/mode",
+      type: "std_msgs/msg/String",
+      staleMs: 5000
+    },
     armPose: {
       label: "로봇팔 실좌표(TF)",
       name: "/arm/joint_pose_array",
@@ -248,6 +260,11 @@
     detectionExpiryTimers: new Map(),
     pendingDetectionCameras: new Set(),
     detectionAnimationFrameId: null,
+    controlMode: null,
+    gripperHoldReceived: false,
+    latestGripperHold: false,
+    gripperHoldActive: false,
+    gripperHoldFlashTimer: null,
     demoFrameId: null,
     demoStartedAt: 0,
     resizeObserver: null
@@ -301,10 +318,14 @@
     activeTopicCount: $("activeTopicCount"),
     topicHealthList: $("topicHealthList"),
     armKinematicsCanvas: $("armKinematicsCanvas"),
+    armKinematicsPanel: $("armKinematicsPanel"),
     pathCanvas: $("pathCanvas"),
     recordButton: $("recordButton"),
     returnButton: $("returnButton"),
     armPlaceholder: $("armPlaceholder"),
+    gripperHoldFlash: $("gripperHoldFlash"),
+    gripperHoldStatus: $("gripperHoldStatus"),
+    gripperHoldUnavailable: $("gripperHoldUnavailable"),
     armTargetPosition: $("armTargetPosition"),
     jointStateList: $("jointStateList"),
     pathPlaceholder: $("pathPlaceholder")
@@ -620,7 +641,9 @@
     clearDetectionData();
     initTopicStats();
 
+    subscribeTopic("controlMode", handleControlMode);
     subscribeTopic("jointStates", handleJointState);
+    subscribeTopic("gripperHoldFinished", handleGripperHoldFinished);
     subscribeTopic("armPose", handleArmPose);
     subscribeTopic("armTargetPointBase", handleArmTargetPointBase);
     subscribeTopic("path", handlePath);
@@ -1015,6 +1038,76 @@
     $("armReach").textContent = `${resolved.reach.toFixed(2)} m`;
     $("endEffectorPosition").textContent =
       `EE X ${resolved.endEffector.x.toFixed(2)} / Z ${resolved.endEffector.z.toFixed(2)}`;
+  }
+
+  function handleGripperHoldFinished(message) {
+    // rosbridge/중간 게이트웨이에 따라 Bool이 boolean, 0/1, 문자열로 전달되는
+    // 경우까지 수용한다. false 계열 외의 임의 값은 성공으로 오인하지 않는다.
+    const rawValue = message?.data;
+    const isHolding = rawValue === true || rawValue === 1 || rawValue === "1" ||
+      (typeof rawValue === "string" && rawValue.trim().toLowerCase() === "true");
+    state.gripperHoldReceived = true;
+    state.latestGripperHold = isHolding;
+
+    // 파지 상태 표시는 MANUAL_EE에서만 유효하다. 모드 토픽이 아직 도착하지
+    // 않았을 때의 값은 저장해 두었다가 MANUAL_EE 확인 후 반영한다.
+    if (state.controlMode !== "MANUAL_EE") return;
+    dom.gripperHoldUnavailable.classList.add("hidden");
+
+    if (!isHolding) {
+      if (state.gripperHoldActive) addLog("파지 성공 신호 해제");
+      resetGripperHoldIndicator();
+      return;
+    }
+
+    // Bool 토픽이 true를 반복 발행해도 중앙 알림은 상승 순간에 한 번만 표시한다.
+    if (state.gripperHoldActive) return;
+    state.gripperHoldActive = true;
+    addLog("파지 성공 신호 수신");
+    dom.armKinematicsPanel.classList.add("gripper-hold-active");
+    dom.gripperHoldStatus.classList.remove("hidden");
+    dom.gripperHoldFlash.classList.remove("hidden");
+
+    window.clearTimeout(state.gripperHoldFlashTimer);
+    state.gripperHoldFlashTimer = window.setTimeout(() => {
+      dom.gripperHoldFlash.classList.add("hidden");
+      dom.armKinematicsPanel.classList.remove("gripper-hold-active");
+      state.gripperHoldFlashTimer = null;
+    }, 500);
+  }
+
+  function handleControlMode(message) {
+    const nextMode = typeof message?.data === "string"
+      ? message.data.trim().toUpperCase()
+      : "";
+    const wasManualEe = state.controlMode === "MANUAL_EE";
+    state.controlMode = nextMode;
+
+    if (nextMode !== "MANUAL_EE") {
+      state.gripperHoldReceived = false;
+      state.latestGripperHold = false;
+      resetGripperHoldIndicator();
+      return;
+    }
+
+    if (!wasManualEe) addLog("MANUAL_EE 파지 상태 감시 시작");
+    if (!state.gripperHoldReceived) {
+      resetGripperHoldIndicator();
+      dom.gripperHoldUnavailable.classList.remove("hidden");
+      return;
+    }
+
+    handleGripperHoldFinished({ data: state.latestGripperHold });
+  }
+
+  function resetGripperHoldIndicator() {
+    state.gripperHoldActive = false;
+    window.clearTimeout(state.gripperHoldFlashTimer);
+    state.gripperHoldFlashTimer = null;
+    dom.armKinematicsPanel.classList.remove("gripper-hold-active");
+    dom.gripperHoldFlash.classList.add("hidden");
+    dom.gripperHoldStatus.classList.add("hidden");
+    dom.gripperHoldUnavailable.classList.add("hidden");
   }
 
   function handleArmPose(message) {
@@ -2432,6 +2525,10 @@
 
   function resetDisplayedData() {
     clearDetectionData();
+    state.controlMode = null;
+    state.gripperHoldReceived = false;
+    state.latestGripperHold = false;
+    resetGripperHoldIndicator();
     document.querySelectorAll("canvas.demo-camera").forEach((canvas) => canvas.remove());
     Object.values(cameraBindings).forEach((binding) => {
       binding.stage.classList.remove("has-signal");
