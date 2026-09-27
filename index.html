@@ -9,57 +9,6 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <img
-          class="team-logo"
-          src="./assets/team-logo-placeholder.svg"
-          alt="팀 로고 임시 이미지"
-        />
-        <div>
-          <p class="eyebrow">DEFENSE ROBOT MONITORING SYSTEM</p>
-          <h1>DOLBOT CENTER</h1>
-        </div>
-        <div class="system-summary">
-          <div id="systemClock" class="system-clock">--:--:--</div>
-          <div id="connectionBadge" class="connection-badge connection-badge--offline">
-            <span class="pulse-dot"></span>
-            <span id="connectionText">DISCONNECTED</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="bridge-controls">
-        <label class="bridge-field">
-          <span>ROSBRIDGE</span>
-          <input id="rosbridgeUrl" type="text" value="ws://localhost:9090" spellcheck="false" />
-        </label>
-        <button id="connectButton" class="button button--primary" type="button">연결</button>
-        <button id="disconnectButton" class="button" type="button" disabled>해제</button>
-        <label class="switch" title="실제 ROS 데이터 대신 명시적으로 데모 데이터를 표시합니다.">
-          <input id="demoToggle" type="checkbox" />
-          <span class="switch-track"></span>
-          <span>DEMO</span>
-        </label>
-        <button id="settingsButton" class="icon-button" type="button" aria-label="토픽 설정 열기">⚙</button>
-      </div>
-
-      <div class="robot-quick-status">
-        <article id="robotConnectedCard" class="status-card status-card--unknown">
-          <span class="status-led"></span>
-          <div>
-            <small>ROBOT LINK 수신</small>
-            <strong id="robotConnectedValue">미수신</strong>
-          </div>
-        </article>
-        <div class="telemetry-item telemetry-item--dps">
-          <span>RMD DPS</span>
-          <strong id="rmdDps">-- deg/s</strong>
-        </div>
-      </div>
-
-    </header>
-
     <main class="dashboard-grid">
       <div id="topCameraRow" class="top-camera-row">
       <section class="panel camera-panel grid-cam-1" data-topic-key="subCamera1">
@@ -99,6 +48,10 @@
             <h2>Drive</h2>
           </div>
           <div class="panel-tools">
+            <span class="rate-badge drive-dps-badge">
+              <span>DPS</span>
+              <strong id="rmdDps">-- deg/s</strong>
+            </span>
             <span id="mainCameraRate" class="rate-badge rate-badge--accent">0.0 Hz</span>
             <button class="fullscreen-button" data-fullscreen-target="mainCameraStage" type="button">⛶</button>
           </div>
@@ -246,7 +199,6 @@
 
       <div class="dashboard-resizer dashboard-resizer--left" data-dashboard-resizer="left" role="separator" aria-orientation="vertical" aria-label="왼쪽 패널 너비 조절" tabindex="0"></div>
       <div class="dashboard-resizer dashboard-resizer--right" data-dashboard-resizer="right" role="separator" aria-orientation="vertical" aria-label="주행 경로 패널 너비 조절" tabindex="0"></div>
-      <div class="dashboard-resizer dashboard-resizer--arm-row" data-dashboard-resizer="arm-row" role="separator" aria-orientation="horizontal" aria-label="하단 센터 패널 높이 조절" tabindex="0"></div>
 
       <section class="panel camera-panel grid-arm-camera" data-topic-key="armCamera">
         <div class="panel-heading">
@@ -283,6 +235,8 @@
             <h2>생성된 주행 경로</h2>
           </div>
           <div class="panel-tools">
+            <button id="recordButton" class="path-command-button path-command-button--record" type="button" disabled>RECORD</button>
+            <button id="returnButton" class="path-command-button" type="button" disabled>RETURN</button>
             <span id="pathFrame" class="rate-badge">FRAME: --</span>
             <span id="pathRate" class="rate-badge">0.0 Hz</span>
           </div>
@@ -296,43 +250,135 @@
           </div>
         </div>
 
-        <div class="joint-state-section">
-          <div class="section-title">
-            <span>JOINT STATE</span>
-            <span id="armTargetPosition">TARGET X -- / Z --</span>
-          </div>
-          <div id="jointStateList" class="joint-state-list">
-            <div class="joint-state-empty">관절 데이터 미수신</div>
-          </div>
-        </div>
+        <div
+          class="path-section-resizer"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="주행 경로와 DOLBOT CENTER 패널 높이 조절"
+          tabindex="0"
+        ></div>
 
-        <div class="topic-health">
-          <div class="section-title"><span>TOPIC HEALTH</span><span id="activeTopicCount">0 / 10 ACTIVE</span></div>
-          <div id="topicHealthList" class="topic-health-list"></div>
-        </div>
+        <header class="topbar path-control-panel" aria-label="DOLBOT CENTER 제어 패널">
+          <div class="brand">
+            <img
+              class="team-logo"
+              src="./assets/team-logo-placeholder.svg"
+              alt="팀 로고 임시 이미지"
+            />
+            <div>
+              <p class="eyebrow">DEFENSE ROBOT MONITORING SYSTEM</p>
+              <h1>DOLBOT CENTER</h1>
+            </div>
+          </div>
+
+          <div class="system-summary">
+            <div id="systemClock" class="system-clock">--:--:--</div>
+            <div id="connectionBadge" class="connection-badge connection-badge--offline">
+              <span class="pulse-dot"></span>
+              <span id="connectionText">DISCONNECTED</span>
+            </div>
+          </div>
+
+          <div class="bridge-controls">
+            <label class="bridge-field">
+              <span>ROSBRIDGE</span>
+              <input id="rosbridgeUrl" type="text" value="ws://localhost:9090" spellcheck="false" />
+            </label>
+            <button id="connectButton" class="button button--primary" type="button">연결</button>
+            <button id="disconnectButton" class="button" type="button" disabled>해제</button>
+            <label class="switch" title="실제 ROS 데이터 대신 명시적으로 데모 데이터를 표시합니다.">
+              <input id="demoToggle" type="checkbox" />
+              <span class="switch-track"></span>
+              <span>DEMO</span>
+            </label>
+            <button id="settingsButton" class="icon-button" type="button" aria-label="토픽 설정 열기">⚙</button>
+          </div>
+        </header>
       </section>
 
-      <section class="panel arm-kinematics-panel grid-arm-kinematics">
-        <div class="panel-heading">
-          <div>
-            <p>MANIPULATOR / FORWARD KINEMATICS</p>
-            <h2>로봇팔 관절 위치</h2>
+      <div class="arm-column grid-arm-kinematics">
+        <section class="panel arm-kinematics-panel">
+          <div class="panel-heading">
+            <div>
+              <p>MANIPULATOR / FORWARD KINEMATICS</p>
+              <h2>로봇팔 관절 위치</h2>
+            </div>
+            <div class="panel-tools">
+              <span id="jointStatesRate" class="rate-badge rate-badge--accent">0.0 Hz</span>
+            </div>
           </div>
-          <div class="panel-tools">
-            <span id="jointStatesRate" class="rate-badge rate-badge--accent">0.0 Hz</span>
-          </div>
-        </div>
 
-        <div class="arm-stage">
-          <canvas id="armKinematicsCanvas"></canvas>
-          <div id="armPlaceholder" class="canvas-placeholder">/joint_states 토픽 대기 중</div>
-          <div class="arm-metrics">
-            <span>PLANE <strong>X-Z</strong></span>
-            <span>JOINTS <strong id="armJointCount">0</strong></span>
-            <span>REACH <strong id="armReach">0.00 m</strong></span>
+          <div class="arm-stage">
+            <canvas id="armKinematicsCanvas"></canvas>
+            <div id="armPlaceholder" class="canvas-placeholder">/joint_states 토픽 대기 중</div>
+            <section class="joint-state-section joint-state-section--overlay" aria-label="로봇팔 관절 상태">
+              <div class="section-title">
+                <span>JOINT STATE</span>
+                <span id="armTargetPosition">TARGET X -- / Z --</span>
+              </div>
+              <div id="jointStateList" class="joint-state-list">
+                <div class="joint-state-empty">관절 데이터 미수신</div>
+              </div>
+            </section>
+            <div class="arm-metrics">
+              <span>PLANE <strong>X-Z</strong></span>
+              <span>JOINTS <strong id="armJointCount">0</strong></span>
+              <span>REACH <strong id="armReach">0.00 m</strong></span>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        <section class="panel arm-loadout-panel" aria-label="엔드이펙터 및 구호물자 상태">
+          <div class="panel-heading">
+            <div>
+              <p>MANIPULATOR / STORES MANAGEMENT</p>
+              <h2>엔드이펙터 · 구호물자</h2>
+            </div>
+            <div class="loadout-legend" aria-label="상태 범례">
+              <span><i class="legend-swatch legend-swatch--stored"></i>적재</span>
+              <span><i class="legend-swatch legend-swatch--mounted"></i>장착</span>
+            </div>
+          </div>
+
+          <div class="loadout-grid">
+            <article class="loadout-item" data-loadout-key="screwdriver" data-status="unknown">
+              <span class="loadout-station">STA 01</span>
+              <svg class="loadout-icon" viewBox="0 0 64 64" aria-hidden="true">
+                <path d="M27 7h10v20h20v10H37v20H27V37H7V27h20Z" />
+              </svg>
+              <strong>십자드라이버</strong>
+              <span class="loadout-state">미확인</span>
+            </article>
+
+            <article class="loadout-item" data-loadout-key="drill" data-status="unknown">
+              <span class="loadout-station">STA 02</span>
+              <svg class="loadout-icon" viewBox="0 0 64 64" aria-hidden="true">
+                <path d="M32 7 57 55H7Z" />
+              </svg>
+              <strong>드릴</strong>
+              <span class="loadout-state">미확인</span>
+            </article>
+
+            <article class="loadout-item" data-loadout-key="gripper" data-status="unknown">
+              <span class="loadout-station">STA 03</span>
+              <svg class="loadout-icon" viewBox="0 0 64 64" aria-hidden="true">
+                <path d="M10 8c-3 3-3 7 0 10l15 15v21c0 3 2 5 5 5h4c3 0 5-2 5-5V33l15-15c3-3 3-7 0-10s-7-3-10 0L32 20 20 8c-3-3-7-3-10 0Z" />
+              </svg>
+              <strong>그리퍼</strong>
+              <span class="loadout-state">미확인</span>
+            </article>
+
+            <article class="loadout-item" data-loadout-key="relief" data-status="unknown">
+              <span class="loadout-station">STA 04</span>
+              <svg class="loadout-icon" viewBox="0 0 64 64" aria-hidden="true">
+                <rect x="9" y="9" width="46" height="46" rx="2" />
+              </svg>
+              <strong>구호물자</strong>
+              <span class="loadout-state">미확인</span>
+            </article>
+          </div>
+        </section>
+      </div>
     </main>
 
     <footer class="footer-bar">

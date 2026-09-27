@@ -222,17 +222,21 @@
     maxJoints: 8
   };
 
+  const ARM_LOADOUT_KEYS = ["screwdriver", "drill", "gripper", "relief"];
+
   const state = {
     ros: null,
     connected: false,
     connecting: false,
     demo: false,
+    pathCommandPublishers: new Map(),
     subscriptions: new Map(),
     topicConfig: loadTopicConfig(),
     streamConfig: loadStreamConfig(),
     mediaPlayers: new Map(),
     mediaStats: new Map(),
     armModel: loadArmModelConfig(),
+    armLoadout: Object.fromEntries(ARM_LOADOUT_KEYS.map((key) => [key, "unknown"])),
     topicStats: new Map(),
     latestJointState: null,
     latestArmPose: null,
@@ -252,6 +256,7 @@
   const $ = (id) => document.getElementById(id);
   const TOP_CAMERA_LAYOUT_STORAGE_KEY = "dolbot.topCameraLayout";
   const DASHBOARD_LAYOUT_STORAGE_KEY = "dolbot.dashboardLayout";
+  const PATH_PANEL_LAYOUT_STORAGE_KEY = "dolbot.pathPanelLayout";
   const TOP_CAMERA_MIN_WIDTHS = {
     left: 220,
     main: 420,
@@ -297,6 +302,8 @@
     topicHealthList: $("topicHealthList"),
     armKinematicsCanvas: $("armKinematicsCanvas"),
     pathCanvas: $("pathCanvas"),
+    recordButton: $("recordButton"),
+    returnButton: $("returnButton"),
     armPlaceholder: $("armPlaceholder"),
     armTargetPosition: $("armTargetPosition"),
     jointStateList: $("jointStateList"),
@@ -444,6 +451,8 @@
     dom.connectButton.disabled = online || busy || state.demo;
     dom.disconnectButton.disabled = !online && !busy;
     dom.rosbridgeUrl.disabled = online || busy || state.demo;
+    dom.recordButton.disabled = !online;
+    dom.returnButton.disabled = !online;
 
     if (mode === "online") {
       dom.footerMessage.textContent = "ROS 토픽 수신 중";
@@ -518,6 +527,7 @@
       const wasConnected = state.connected;
       state.connected = false;
       state.connecting = false;
+      state.pathCommandPublishers.clear();
       clearSubscriptions();
       clearDetectionData();
       setConnectionState("offline", "DISCONNECTED");
@@ -536,6 +546,7 @@
   function disconnectRos() {
     clearSubscriptions();
     clearDetectionData();
+    clearPathCommandPublishers();
     if (state.ros) {
       try {
         state.ros.close();
@@ -548,6 +559,53 @@
     state.connecting = false;
     setConnectionState("offline", "DISCONNECTED");
     addLog("사용자가 연결을 해제했습니다.");
+  }
+
+  function clearPathCommandPublishers() {
+    state.pathCommandPublishers.forEach((publisher) => {
+      try {
+        publisher.unadvertise();
+      } catch (error) {
+        console.warn(error);
+      }
+    });
+    state.pathCommandPublishers.clear();
+  }
+
+  function publishPathCommand(command) {
+    const commands = {
+      record: { topic: "/path/record", label: "RECORD", button: dom.recordButton },
+      return: { topic: "/path/return", label: "RETURN", button: dom.returnButton }
+    };
+    const selected = commands[command];
+    if (!selected) return;
+
+    if (!state.connected || !state.ros || state.demo) {
+      dom.footerMessage.textContent = `ROS 연결 후 ${selected.label} 명령을 발행할 수 있습니다.`;
+      addLog(`${selected.label} 발행 실패: ROS가 연결되어 있지 않습니다.`, "warning");
+      return;
+    }
+
+    try {
+      let publisher = state.pathCommandPublishers.get(command);
+      if (!publisher) {
+        publisher = new ROSLIB.Topic({
+          ros: state.ros,
+          name: selected.topic,
+          messageType: "std_msgs/msg/Bool"
+        });
+        state.pathCommandPublishers.set(command, publisher);
+      }
+
+      publisher.publish(new ROSLIB.Message({ data: true }));
+      dom.footerMessage.textContent = `${selected.topic} = true 발행 완료`;
+      selected.button.classList.add("is-published");
+      window.setTimeout(() => selected.button.classList.remove("is-published"), 600);
+      addLog(`${selected.topic} 토픽에 true를 발행했습니다.`);
+    } catch (error) {
+      dom.footerMessage.textContent = `${selected.label} 명령 발행 실패`;
+      addLog(`${selected.label} 발행 실패: ${extractErrorMessage(error)}`, "error");
+    }
   }
 
   function extractErrorMessage(error) {
@@ -1847,8 +1905,10 @@
       }
     });
 
-    dom.activeTopicCount.textContent = `${active} / ${state.topicStats.size} ACTIVE`;
-    renderTopicHealth();
+    if (dom.activeTopicCount) {
+      dom.activeTopicCount.textContent = `${active} / ${state.topicStats.size} ACTIVE`;
+    }
+    if (dom.topicHealthList) renderTopicHealth();
 
     if (!state.connected && !state.demo) {
       dom.overallHealth.textContent = "--";
@@ -1861,6 +1921,8 @@
   }
 
   function renderTopicHealth() {
+    if (!dom.topicHealthList) return;
+
     const fragment = document.createDocumentFragment();
     const now = Date.now();
 
@@ -2110,8 +2172,35 @@
     });
   }
 
+  function renderArmLoadout() {
+    const labels = {
+      unknown: "미확인",
+      stored: "적재함",
+      mounted: "로봇팔 장착"
+    };
+
+    document.querySelectorAll("[data-loadout-key]").forEach((item) => {
+      const status = state.armLoadout[item.dataset.loadoutKey] || "unknown";
+      item.dataset.status = status;
+      const statusNode = item.querySelector(".loadout-state");
+      if (statusNode) statusNode.textContent = labels[status];
+      const itemName = item.querySelector("strong")?.textContent || item.dataset.loadoutKey;
+      item.setAttribute("aria-label", `${itemName}: ${labels[status]}`);
+    });
+  }
+
+  function setDemoArmLoadout(enabled) {
+    ARM_LOADOUT_KEYS.forEach((key) => {
+      state.armLoadout[key] = enabled
+        ? key === "gripper" ? "mounted" : "stored"
+        : "unknown";
+    });
+    renderArmLoadout();
+  }
+
   function toggleDemo(enabled) {
     state.demo = enabled;
+    setDemoArmLoadout(enabled);
 
     if (enabled) {
       if (state.connected || state.connecting) disconnectRos();
@@ -2565,7 +2654,7 @@
       right: document.querySelector(".grid-path")?.getBoundingClientRect().width || 0,
       top: $("topCameraRow")?.getBoundingClientRect().height || 0,
       upper: document.querySelector(".grid-arm-camera")?.getBoundingClientRect().height || 0,
-      lower: document.querySelector(".topbar")?.getBoundingClientRect().height || 0
+      lower: 0
     };
   }
 
@@ -2597,18 +2686,16 @@
         DASHBOARD_MIN_SIZES.lower
       );
     } else if (handle === "top") {
-      const lowerTotal = startLayout.upper + startLayout.lower;
-      const [nextTop, nextLowerTotal] = resizePair(
+      const [nextTop, nextUpper] = resizePair(
         startLayout.top,
-        lowerTotal,
+        startLayout.upper,
         delta,
         DASHBOARD_MIN_SIZES.top,
-        DASHBOARD_MIN_SIZES.upper + DASHBOARD_MIN_SIZES.lower
+        DASHBOARD_MIN_SIZES.upper
       );
-      const lowerScale = lowerTotal > 0 ? nextLowerTotal / lowerTotal : 1;
       layout.top = nextTop;
-      layout.upper = startLayout.upper * lowerScale;
-      layout.lower = startLayout.lower * lowerScale;
+      layout.upper = nextUpper;
+      layout.lower = 0;
     }
 
     applyDashboardLayout(layout);
@@ -2668,13 +2755,113 @@
     });
   }
 
+  function getPathPanelHeights() {
+    return {
+      canvas: document.querySelector(".path-panel > .canvas-stage")?.getBoundingClientRect().height || 0,
+      controls: document.querySelector(".path-panel > .path-control-panel")?.getBoundingClientRect().height || 0
+    };
+  }
+
+  function applyPathPanelLayout(layout) {
+    const panel = document.querySelector(".path-panel");
+    const canvas = Number(layout?.canvas);
+    const controls = Number(layout?.controls);
+    if (!panel || !Number.isFinite(canvas) || !Number.isFinite(controls) || canvas <= 0 || controls <= 0) return;
+
+    panel.style.setProperty("--path-canvas-size", `${canvas}fr`);
+    panel.style.setProperty("--path-control-size", `${controls}fr`);
+
+    const resizer = panel.querySelector(".path-section-resizer");
+    const total = canvas + controls;
+    resizer?.setAttribute("aria-valuenow", String(Math.round((canvas / total) * 100)));
+  }
+
+  function savePathPanelLayout(layout) {
+    try {
+      localStorage.setItem(PATH_PANEL_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+    } catch (error) {
+      console.warn("Failed to save path panel layout", error);
+    }
+  }
+
+  function loadPathPanelLayout() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PATH_PANEL_LAYOUT_STORAGE_KEY) || "null");
+      applyPathPanelLayout(saved);
+    } catch (error) {
+      console.warn("Failed to load path panel layout", error);
+    }
+  }
+
+  function resizePathPanel(deltaY, startHeights) {
+    const [canvas, controls] = resizePair(
+      startHeights.canvas,
+      startHeights.controls,
+      deltaY,
+      180,
+      132
+    );
+    const layout = { canvas, controls };
+    applyPathPanelLayout(layout);
+    handleResize();
+    return layout;
+  }
+
+  function bindPathPanelResizer() {
+    const resizer = document.querySelector(".path-section-resizer");
+    if (!resizer) return;
+
+    loadPathPanelLayout();
+
+    resizer.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault();
+      const layout = resizePathPanel(
+        event.key === "ArrowDown" ? 24 : -24,
+        getPathPanelHeights()
+      );
+      savePathPanelLayout(layout);
+    });
+
+    resizer.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+
+      const startY = event.clientY;
+      const startHeights = getPathPanelHeights();
+      let activeLayout = null;
+      resizer.classList.add("is-resizing");
+      document.body.classList.add("dashboard-row-resizing");
+      resizer.setPointerCapture?.(event.pointerId);
+
+      const onPointerMove = (moveEvent) => {
+        activeLayout = resizePathPanel(moveEvent.clientY - startY, startHeights);
+      };
+
+      const onPointerUp = () => {
+        resizer.classList.remove("is-resizing");
+        document.body.classList.remove("dashboard-row-resizing");
+        if (activeLayout) savePathPanelLayout(activeLayout);
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    });
+  }
+
   function bindEvents() {
     bindTopCameraResizers();
     bindDashboardResizers();
+    bindPathPanelResizer();
 
     dom.connectButton.addEventListener("click", connectRos);
     dom.disconnectButton.addEventListener("click", disconnectRos);
     dom.demoToggle.addEventListener("change", (event) => toggleDemo(event.target.checked));
+    dom.recordButton.addEventListener("click", () => publishPathCommand("record"));
+    dom.returnButton.addEventListener("click", () => publishPathCommand("return"));
 
     dom.rosbridgeUrl.addEventListener("keydown", (event) => {
       if (event.key === "Enter") connectRos();
@@ -2699,6 +2886,7 @@
     window.addEventListener("beforeunload", () => {
       stopAllMedia();
       clearSubscriptions();
+      clearPathCommandPublishers();
       if (state.ros) state.ros.close();
     });
 
@@ -2738,6 +2926,7 @@
     initMediaStats();
     updateTopicLabels();
     renderTopicHealth();
+    renderArmLoadout();
     bindEvents();
     startUiLoops();
     setConnectionState("offline", "DISCONNECTED");
