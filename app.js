@@ -25,6 +25,20 @@
       type: "std_msgs/msg/String",
       staleMs: 5000
     },
+    toolChange: {
+      label: "툴 교체 상태",
+      name: "/tool/change",
+      type: "std_msgs/msg/Bool",
+      staleMs: 5000,
+      trackHealth: false
+    },
+    toolId: {
+      label: "툴 ID",
+      name: "/tool/id",
+      type: "std_msgs/msg/Int32",
+      staleMs: 5000,
+      trackHealth: false
+    },
     armPose: {
       label: "로봇팔 실좌표(TF)",
       name: "/arm/joint_pose_array",
@@ -242,6 +256,7 @@
     connecting: false,
     demo: false,
     pathCommandPublishers: new Map(),
+    toolCommandPublishers: new Map(),
     subscriptions: new Map(),
     topicConfig: loadTopicConfig(),
     streamConfig: loadStreamConfig(),
@@ -249,6 +264,11 @@
     mediaStats: new Map(),
     armModel: loadArmModelConfig(),
     armLoadout: Object.fromEntries(ARM_LOADOUT_KEYS.map((key) => [key, "unknown"])),
+    selectedToolId: 0,
+    mountedToolId: 0,
+    pendingToolId: null,
+    toolChangeActive: false,
+    pickingBoxTimer: null,
     topicStats: new Map(),
     latestJointState: null,
     latestArmPose: null,
@@ -319,6 +339,8 @@
     topicHealthList: $("topicHealthList"),
     armKinematicsCanvas: $("armKinematicsCanvas"),
     armKinematicsPanel: $("armKinematicsPanel"),
+    armOperationStatus: $("armOperationStatus"),
+    armOperationStatusText: $("armOperationStatusText"),
     pathCanvas: $("pathCanvas"),
     recordButton: $("recordButton"),
     returnButton: $("returnButton"),
@@ -326,6 +348,7 @@
     gripperHoldFlash: $("gripperHoldFlash"),
     gripperHoldStatus: $("gripperHoldStatus"),
     gripperHoldUnavailable: $("gripperHoldUnavailable"),
+    toolIdSelect: $("toolIdSelect"),
     armTargetPosition: $("armTargetPosition"),
     jointStateList: $("jointStateList"),
     pathPlaceholder: $("pathPlaceholder")
@@ -474,6 +497,7 @@
     dom.rosbridgeUrl.disabled = online || busy || state.demo;
     dom.recordButton.disabled = !online;
     dom.returnButton.disabled = !online;
+    updateToolControls();
 
     if (mode === "online") {
       dom.footerMessage.textContent = "ROS 토픽 수신 중";
@@ -549,6 +573,8 @@
       state.connected = false;
       state.connecting = false;
       state.pathCommandPublishers.clear();
+      state.toolCommandPublishers.clear();
+      resetToolInteraction();
       clearSubscriptions();
       clearDetectionData();
       setConnectionState("offline", "DISCONNECTED");
@@ -568,6 +594,8 @@
     clearSubscriptions();
     clearDetectionData();
     clearPathCommandPublishers();
+    clearToolCommandPublishers();
+    resetToolInteraction();
     if (state.ros) {
       try {
         state.ros.close();
@@ -591,6 +619,45 @@
       }
     });
     state.pathCommandPublishers.clear();
+  }
+
+  function clearToolCommandPublishers() {
+    state.toolCommandPublishers.forEach((publisher) => {
+      try {
+        publisher.unadvertise();
+      } catch (error) {
+        console.warn(error);
+      }
+    });
+    state.toolCommandPublishers.clear();
+  }
+
+  function publishToolMessage(key, data) {
+    const config = state.topicConfig[key];
+    if (!config?.name || !state.connected || !state.ros || state.demo) {
+      dom.footerMessage.textContent = "ROS 연결 후 툴 명령을 발행할 수 있습니다.";
+      addLog("툴 명령 발행 실패: ROS가 연결되어 있지 않습니다.", "warning");
+      return false;
+    }
+
+    try {
+      let publisher = state.toolCommandPublishers.get(key);
+      if (!publisher) {
+        publisher = new ROSLIB.Topic({
+          ros: state.ros,
+          name: config.name,
+          messageType: config.type
+        });
+        state.toolCommandPublishers.set(key, publisher);
+      }
+      publisher.publish(new ROSLIB.Message({ data }));
+      addLog(`${config.name} 토픽에 ${String(data)}를 발행했습니다.`);
+      return true;
+    } catch (error) {
+      dom.footerMessage.textContent = "툴 명령 발행 실패";
+      addLog(`툴 명령 발행 실패: ${extractErrorMessage(error)}`, "error");
+      return false;
+    }
   }
 
   function publishPathCommand(command) {
@@ -642,6 +709,8 @@
     initTopicStats();
 
     subscribeTopic("controlMode", handleControlMode);
+    subscribeTopic("toolChange", handleToolChange);
+    subscribeTopic("toolId", handleToolId);
     subscribeTopic("jointStates", handleJointState);
     subscribeTopic("gripperHoldFinished", handleGripperHoldFinished);
     subscribeTopic("armPose", handleArmPose);
@@ -1040,12 +1109,43 @@
       `EE X ${resolved.endEffector.x.toFixed(2)} / Z ${resolved.endEffector.z.toFixed(2)}`;
   }
 
+  function messageBoolean(value) {
+    return value === true || value === 1 || value === "1" ||
+      (typeof value === "string" && value.trim().toLowerCase() === "true");
+  }
+
+  function handleToolChange(message) {
+    const active = messageBoolean(message?.data);
+    if (active && state.pendingToolId === null) state.pendingToolId = state.selectedToolId;
+    setToolChangeActive(active);
+  }
+
+  function handleToolId(message) {
+    const toolId = Number(message?.data);
+    if (!Number.isInteger(toolId)) return;
+
+    if (toolId === 4) {
+      if (state.selectedToolId === 0 && !state.toolChangeActive) showPickingBoxStatus();
+      return;
+    }
+    if (![0, 1, 2].includes(toolId)) return;
+
+    state.selectedToolId = toolId;
+    if (dom.toolIdSelect) dom.toolIdSelect.value = String(toolId);
+    if (state.toolChangeActive) {
+      state.pendingToolId = toolId;
+    } else {
+      state.mountedToolId = toolId;
+      syncArmLoadoutWithMountedTool();
+    }
+    updateToolControls();
+  }
+
   function handleGripperHoldFinished(message) {
     // rosbridge/중간 게이트웨이에 따라 Bool이 boolean, 0/1, 문자열로 전달되는
     // 경우까지 수용한다. false 계열 외의 임의 값은 성공으로 오인하지 않는다.
     const rawValue = message?.data;
-    const isHolding = rawValue === true || rawValue === 1 || rawValue === "1" ||
-      (typeof rawValue === "string" && rawValue.trim().toLowerCase() === "true");
+    const isHolding = messageBoolean(rawValue);
     state.gripperHoldReceived = true;
     state.latestGripperHold = isHolding;
 
@@ -2280,15 +2380,121 @@
       const itemName = item.querySelector("strong")?.textContent || item.dataset.loadoutKey;
       item.setAttribute("aria-label", `${itemName}: ${labels[status]}`);
     });
+    updateToolControls();
   }
 
-  function setDemoArmLoadout(enabled) {
+  function syncArmLoadoutWithMountedTool() {
+    const mountedKey = {
+      0: "gripper",
+      1: "screwdriver",
+      2: "drill"
+    }[state.mountedToolId];
+
     ARM_LOADOUT_KEYS.forEach((key) => {
-      state.armLoadout[key] = enabled
-        ? key === "gripper" ? "mounted" : "stored"
-        : "unknown";
+      state.armLoadout[key] = key === mountedKey ? "mounted" : "stored";
     });
     renderArmLoadout();
+  }
+
+  function updateToolControls() {
+    const available = state.connected && !state.demo && !state.toolChangeActive;
+    if (dom.toolIdSelect) {
+      dom.toolIdSelect.value = String(state.selectedToolId);
+      dom.toolIdSelect.disabled = !available;
+    }
+
+    document.querySelectorAll("[data-tool-id]").forEach((item) => {
+      item.disabled = !available;
+      item.dataset.lockReason = state.toolChangeActive ? "changing" : "";
+    });
+
+    const relief = document.querySelector('[data-action="pick-box"]');
+    if (relief) {
+      relief.disabled = !available || state.selectedToolId !== 0;
+      relief.dataset.lockReason = state.selectedToolId !== 0 ? "gripper" : state.toolChangeActive ? "changing" : "";
+    }
+  }
+
+  function showArmOperationStatus(mode, text) {
+    dom.armOperationStatus.dataset.mode = mode;
+    dom.armOperationStatusText.textContent = text;
+    dom.armOperationStatus.classList.remove("hidden");
+  }
+
+  function hideArmOperationStatus(expectedMode = "") {
+    if (expectedMode && dom.armOperationStatus.dataset.mode !== expectedMode) return;
+    dom.armOperationStatus.classList.add("hidden");
+    dom.armOperationStatus.removeAttribute("data-mode");
+    dom.armOperationStatusText.textContent = "";
+  }
+
+  function showPickingBoxStatus() {
+    window.clearTimeout(state.pickingBoxTimer);
+    showArmOperationStatus("picking", "Picking Box");
+    state.pickingBoxTimer = window.setTimeout(() => {
+      hideArmOperationStatus("picking");
+      state.pickingBoxTimer = null;
+    }, 2500);
+  }
+
+  function setToolChangeActive(active) {
+    const wasActive = state.toolChangeActive;
+    state.toolChangeActive = active;
+
+    if (active) {
+      window.clearTimeout(state.pickingBoxTimer);
+      state.pickingBoxTimer = null;
+      showArmOperationStatus("changing", "Tool Changing");
+    } else {
+      if (wasActive && state.pendingToolId !== null) {
+        state.mountedToolId = state.pendingToolId;
+        syncArmLoadoutWithMountedTool();
+      }
+      state.pendingToolId = null;
+      hideArmOperationStatus("changing");
+    }
+    updateToolControls();
+  }
+
+  function resetToolInteraction() {
+    window.clearTimeout(state.pickingBoxTimer);
+    state.pickingBoxTimer = null;
+    state.selectedToolId = 0;
+    state.mountedToolId = 0;
+    state.pendingToolId = null;
+    state.toolChangeActive = false;
+    hideArmOperationStatus();
+    syncArmLoadoutWithMountedTool();
+  }
+
+  function requestToolChange(toolId) {
+    if (![0, 1, 2].includes(toolId) || state.toolChangeActive) return;
+
+    state.selectedToolId = toolId;
+    if (dom.toolIdSelect) dom.toolIdSelect.value = String(toolId);
+    updateToolControls();
+
+    const idPublished = publishToolMessage("toolId", toolId);
+    const changePublished = idPublished && publishToolMessage("toolChange", true);
+    if (!changePublished) {
+      updateToolControls();
+      return;
+    }
+
+    state.pendingToolId = toolId;
+    setToolChangeActive(true);
+    dom.footerMessage.textContent = `/tool/id = ${toolId}, /tool/change = true 발행 완료`;
+  }
+
+  function requestPickBox() {
+    if (state.toolChangeActive || state.selectedToolId !== 0) return;
+    if (!publishToolMessage("toolId", 4)) return;
+    dom.footerMessage.textContent = "/tool/id = 4 발행 완료";
+    showPickingBoxStatus();
+  }
+
+  function setDemoArmLoadout() {
+    resetToolInteraction();
   }
 
   function toggleDemo(enabled) {
@@ -2959,6 +3165,13 @@
     dom.demoToggle.addEventListener("change", (event) => toggleDemo(event.target.checked));
     dom.recordButton.addEventListener("click", () => publishPathCommand("record"));
     dom.returnButton.addEventListener("click", () => publishPathCommand("return"));
+    dom.toolIdSelect.addEventListener("change", (event) => {
+      requestToolChange(Number(event.target.value));
+    });
+    document.querySelectorAll("[data-tool-id]").forEach((item) => {
+      item.addEventListener("click", () => requestToolChange(Number(item.dataset.toolId)));
+    });
+    document.querySelector('[data-action="pick-box"]')?.addEventListener("click", requestPickBox);
 
     dom.rosbridgeUrl.addEventListener("keydown", (event) => {
       if (event.key === "Enter") connectRos();
@@ -2984,6 +3197,7 @@
       stopAllMedia();
       clearSubscriptions();
       clearPathCommandPublishers();
+      clearToolCommandPublishers();
       if (state.ros) state.ros.close();
     });
 
@@ -3023,7 +3237,7 @@
     initMediaStats();
     updateTopicLabels();
     renderTopicHealth();
-    renderArmLoadout();
+    syncArmLoadoutWithMountedTool();
     bindEvents();
     startUiLoops();
     setConnectionState("offline", "DISCONNECTED");

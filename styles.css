@@ -891,6 +891,47 @@ body[data-camera-transport="ros-compressed"] .camera-stage.has-signal .compresse
   display: none;
 }
 
+.arm-operation-status {
+  position: absolute;
+  z-index: 6;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: min(72%, 360px);
+  padding: 14px 22px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #e8ad55;
+  background: rgba(41, 29, 12, 0.9);
+  box-shadow: inset 0 0 18px rgba(232, 173, 85, 0.12), 0 0 20px rgba(232, 173, 85, 0.25);
+  color: #ffc66e;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: clamp(0.9rem, 1.4vw, 1.3rem);
+  letter-spacing: 0.08em;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.arm-operation-status.hidden {
+  display: none;
+}
+
+.arm-operation-status__mark {
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  transform: rotate(45deg);
+  box-shadow: 0 0 9px currentColor;
+}
+
+.arm-operation-status[data-mode="picking"] {
+  border-color: #63b3ff;
+  background: rgba(10, 35, 58, 0.9);
+  box-shadow: inset 0 0 18px rgba(99, 179, 255, 0.12), 0 0 20px rgba(99, 179, 255, 0.25);
+  color: #83c6ff;
+}
+
 .canvas-stage canvas,
 .arm-stage canvas {
   display: block;
@@ -1988,6 +2029,43 @@ body.camera-column-resizing * {
   padding: 7px 10px;
 }
 
+.loadout-header-tools {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  min-width: 0;
+}
+
+.tool-id-control {
+  display: grid;
+  gap: 2px;
+  color: #75899b;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.44rem;
+  white-space: nowrap;
+}
+
+.tool-id-control select {
+  width: 92px;
+  height: 24px;
+  padding: 0 5px;
+  border: 1px solid #35495b;
+  outline: none;
+  background: #0a1219;
+  color: #a9c6de;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.52rem;
+}
+
+.tool-id-control select:focus {
+  border-color: #63b3ff;
+}
+
+.tool-id-control select:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .loadout-legend {
   display: flex;
   gap: 8px;
@@ -2040,6 +2118,38 @@ body.camera-column-resizing * {
   background: rgba(13, 21, 29, 0.9);
   color: #7f93a5;
   font-family: "IBM Plex Mono", monospace;
+}
+
+.loadout-item--interactive {
+  appearance: none;
+  cursor: pointer;
+}
+
+.loadout-item--interactive:hover:not(:disabled),
+.loadout-item--interactive:focus-visible:not(:disabled) {
+  border-color: var(--loadout-color);
+  outline: none;
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--loadout-color) 10%, transparent);
+}
+
+.loadout-item--interactive:disabled {
+  cursor: not-allowed;
+}
+
+.loadout-item--interactive:disabled::before {
+  content: "LOCK";
+  position: absolute;
+  z-index: 2;
+  top: 3px;
+  right: 4px;
+  color: #6f8293;
+  font-size: 0.4rem;
+  letter-spacing: 0.08em;
+}
+
+.loadout-item--interactive[data-lock-reason="gripper"]:disabled::before {
+  content: "ID 0 ONLY";
+  color: #b88775;
 }
 
 .loadout-item[data-loadout-key="drill"] { --loadout-color: #e8ad55; }

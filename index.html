@@ -297,7 +297,7 @@
       </section>
 
       <div class="arm-column grid-arm-kinematics">
-        <section class="panel arm-kinematics-panel">
+        <section id="armKinematicsPanel" class="panel arm-kinematics-panel">
           <div class="panel-heading">
             <div>
               <p>MANIPULATOR / FORWARD KINEMATICS</p>
@@ -311,6 +311,17 @@
           <div class="arm-stage">
             <canvas id="armKinematicsCanvas"></canvas>
             <div id="armPlaceholder" class="canvas-placeholder">/joint_states 토픽 대기 중</div>
+            <div id="gripperHoldStatus" class="gripper-hold-status hidden" role="status">
+              <span aria-hidden="true"></span>파지 성공
+            </div>
+            <div id="gripperHoldUnavailable" class="gripper-hold-unavailable hidden" role="status">
+              <span aria-hidden="true"></span>상태 확인 불가
+            </div>
+            <div id="gripperHoldFlash" class="gripper-hold-flash hidden" role="status">파지 성공!!</div>
+            <div id="armOperationStatus" class="arm-operation-status hidden" role="status" aria-live="polite">
+              <span class="arm-operation-status__mark" aria-hidden="true"></span>
+              <strong id="armOperationStatusText"></strong>
+            </div>
             <section class="joint-state-section joint-state-section--overlay" aria-label="로봇팔 관절 상태">
               <div class="section-title">
                 <span>JOINT STATE</span>
@@ -334,30 +345,40 @@
               <p>MANIPULATOR / STORES MANAGEMENT</p>
               <h2>엔드이펙터 · 구호물자</h2>
             </div>
-            <div class="loadout-legend" aria-label="상태 범례">
-              <span><i class="legend-swatch legend-swatch--stored"></i>적재</span>
-              <span><i class="legend-swatch legend-swatch--mounted"></i>장착</span>
+            <div class="loadout-header-tools">
+              <label class="tool-id-control">
+                <span>TOOL ID</span>
+                <select id="toolIdSelect" disabled>
+                  <option value="0">0 · 그리퍼</option>
+                  <option value="1">1 · 십자</option>
+                  <option value="2">2 · 드릴</option>
+                </select>
+              </label>
+              <div class="loadout-legend" aria-label="상태 범례">
+                <span><i class="legend-swatch legend-swatch--stored"></i>적재</span>
+                <span><i class="legend-swatch legend-swatch--mounted"></i>장착</span>
+              </div>
             </div>
           </div>
 
           <div class="loadout-grid">
-            <article class="loadout-item" data-loadout-key="screwdriver" data-status="unknown">
+            <button class="loadout-item loadout-item--interactive" type="button" data-loadout-key="screwdriver" data-tool-id="1" data-status="unknown" disabled>
               <span class="loadout-station">STA 01</span>
               <svg class="loadout-icon" viewBox="0 0 64 64" aria-hidden="true">
                 <path d="M27 7h10v20h20v10H37v20H27V37H7V27h20Z" />
               </svg>
               <strong>십자드라이버</strong>
               <span class="loadout-state">미확인</span>
-            </article>
+            </button>
 
-            <article class="loadout-item" data-loadout-key="drill" data-status="unknown">
+            <button class="loadout-item loadout-item--interactive" type="button" data-loadout-key="drill" data-tool-id="2" data-status="unknown" disabled>
               <span class="loadout-station">STA 02</span>
               <svg class="loadout-icon" viewBox="0 0 64 64" aria-hidden="true">
                 <path d="M32 7 57 55H7Z" />
               </svg>
               <strong>드릴</strong>
               <span class="loadout-state">미확인</span>
-            </article>
+            </button>
 
             <article class="loadout-item" data-loadout-key="gripper" data-status="unknown">
               <span class="loadout-station">STA 03</span>
@@ -368,14 +389,14 @@
               <span class="loadout-state">미확인</span>
             </article>
 
-            <article class="loadout-item" data-loadout-key="relief" data-status="unknown">
+            <button class="loadout-item loadout-item--interactive" type="button" data-loadout-key="relief" data-action="pick-box" data-status="unknown" disabled>
               <span class="loadout-station">STA 04</span>
               <svg class="loadout-icon" viewBox="0 0 64 64" aria-hidden="true">
                 <rect x="9" y="9" width="46" height="46" rx="2" />
               </svg>
               <strong>구호물자</strong>
               <span class="loadout-state">미확인</span>
-            </article>
+            </button>
           </div>
         </section>
       </div>
