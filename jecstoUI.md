@@ -51,6 +51,16 @@ ros2 launch dolbotz side_cameras.launch.py \
   right_device:="$RIGHT_CAMERA"
 ```
 
+## 터미널 4-1 — Drive·좌·우 사람 추론
+
+```bash
+ssh jecs@192.168.0.100
+source /opt/ros/humble/setup.bash
+source ~/dolbotZ/install/setup.bash
+export ROS_DOMAIN_ID=0
+ros2 launch vision person_detection.launch.py
+```
+
 ## 터미널 5 — 경로·주행 상태
 
 ```bash
@@ -70,6 +80,26 @@ source ~/dolbotZ/install/setup.bash
 export ROS_DOMAIN_ID=0
 ros2 launch robot_bringup reduced_odom_bringup.launch.py
 ```
+
+### 수동 주행·자동 복귀 운용 — 터미널 5·6 대체
+
+`manual_return_bringup.launch.py`는 구동 드라이버와 오도메트리까지 포함하므로
+위 터미널 5·6과 동시에 실행하지 않습니다. 수동 기록·RETURN 운용 시에는 둘 대신
+다음 명령을 실행합니다.
+
+```bash
+ssh jecs@192.168.0.100
+source /opt/ros/humble/setup.bash
+source ~/ResKU/install/setup.bash
+export ROS_DOMAIN_ID=0
+ros2 launch robot_bringup manual_return_bringup.launch.py
+```
+
+UI의 `EMERGENCY` 버튼은 `/emergency_stop=true`를 발행합니다. 해당 launch의
+`return_state_machine_node`가 우선 `/cmd_vel_safety`와 `/cmd_vel_return`에 0을
+전달한 뒤 종료되며, launch 전체와 `rmd_x8_driver_node`도 함께 shutdown됩니다.
+긴급정지 후 다시 운용하려면 위 launch 명령을 새로 실행해야 합니다. 이는 ROS와
+네트워크에 의존하는 소프트웨어 정지이며 물리 비상정지 장치를 대체하지 않습니다.
 
 ## 터미널 7 — 로봇팔 관절
 

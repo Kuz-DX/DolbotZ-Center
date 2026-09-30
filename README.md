@@ -114,6 +114,20 @@ sudo apt install ros-humble-compressed-image-transport
 
 톱니바퀴에서 ROS 토픽과 네 카메라의 WHEP/HLS 주소를 변경할 수 있습니다. 설정은 브라우저 `localStorage`에 저장됩니다.
 
+`RECORD` 버튼은 `/path/record`에 `true`를 발행하는 동시에 UI에서
+`/odometry/filtered`의 X/Y 좌표 기록을 시작합니다. 다시 누르면 `false`를 발행하고
+기록을 멈춥니다. 기록된 좌표는 ROS 쪽의 별도 경로 기록 노드가 없어도 경로 패널의
+2D X-Y 탑뷰에 표시됩니다. 3 cm 이상 이동한 좌표만 최대 10,000점까지 기록하며,
+오도메트리 토픽은 톱니바퀴 설정에서 변경할 수 있습니다.
+
+`EMERGENCY` 버튼은 `/emergency_stop`에 `std_msgs/msg/Bool(true)`를 한 번
+발행합니다. `~/ResKU`의 `manual_return_bringup.launch.py`로 실행한 경우
+`return_state_machine_node`가 `/cmd_vel_safety`와 `/cmd_vel_return`에 0을 반복
+발행한 뒤 종료되고, launch 이벤트 핸들러가 `rmd_x8_driver_node`를 포함한 launch
+전체를 shutdown합니다. 정지 후에는 launch를 명시적으로 다시 시작해야 합니다.
+이 버튼은 네트워크와 ROS에 의존하는 소프트웨어 정지 수단이므로 물리 비상정지
+장치를 대체하지 않습니다.
+
 `/battery_state`와 세 개의 `/DOLbot/*` Bool 토픽은 현재 `/dolbotZ` 저장소에
 호환 퍼블리셔가 없습니다. 직접/부분/미구현 매칭과 근거는 `topic.ymal`에
 정리되어 있습니다.
@@ -122,9 +136,9 @@ sudo apt install ros-humble-compressed-image-transport
 
 | UI 위치 | ROS 2 토픽 | 메시지 타입 |
 |---|---|---|
-| 메인 카메라 | `/drive/camera/color/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
-| 서브 카메라 1 | `/side/left/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
-| 서브 카메라 2 | `/side/right/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
+| 메인 카메라 | `/drive/person/detecion` | `sensor_msgs/msg/CompressedImage` |
+| 서브 카메라 1 | `/left/person/detection` | `sensor_msgs/msg/CompressedImage` |
+| 서브 카메라 2 | `/right/person/detection` | `sensor_msgs/msg/CompressedImage` |
 | 로봇팔 카메라 | `/arm/camera/color/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
 
 CompressedImage 모드에서는 톱니바퀴의 ROS 토픽 목록에 카메라 4개가 추가되고,
@@ -133,19 +147,46 @@ MediaMTX 주소 설정은 숨겨집니다. 컬러 JPEG/PNG/WebP만 표시하며
 rosbridge를 통과하므로 네트워크 사용량과 브라우저 CPU 부하는 기본 MediaMTX
 모드보다 큽니다.
 
+앞의 세 토픽은 `vision` 패키지의 person detector가 bbox를 그려서 발행하는
+JPEG 영상이다. 다음 노드를 카메라 드라이버와 함께 실행해야 한다.
+
+```bash
+ros2 launch vision person_detection.launch.py
+```
+
+기본 입력은 `/drive/camera/color/image_raw/compressed`,
+`/side/left/image_raw/compressed`, `/side/right/image_raw/compressed`이다.
+
 ### Detection 바운딩박스 오버레이
 
 | UI 화면 | Detection 토픽 |
 |---|---|
-| LEFT | `/mission/spring_ifof/left/detections` |
-| LEFT | `/mission/fall_marker/left/detections` |
-| LEFT | `/mission/summer_traffic/left/detections` |
-| Right | `/mission/spring_ifof/right/detections` |
-| Right | `/mission/fall_marker/right/detections` |
-| 로봇팔 | `/arm/summer_supply/detections` |
+| Drive | `/person_detection/detections` |
+| LEFT | `/left/person/detections` |
+| Right | `/right/person/detections` |
+| 로봇팔 | `/arm/supply/detections` |
 
-메시지 타입은 rosbridge가 현재 ROS graph에서 자동 감지합니다. 표준
-`vision_msgs/msg/Detection2DArray`의 `detections[].bbox` 형식과
+Supply box 인식은 로봇의 `vision` 패키지에서 별도로 실행한다.
+
+```bash
+ros2 launch vision supply.launch.py
+```
+
+팔 카메라의 RGB·정렬 Depth·CameraInfo와 팔 TF를 먼저 실행한다.
+로봇팔 패널은 원본 영상 위에 `/arm/supply/detections`
+(`vision_msgs/msg/Detection2DArray`)의 bbox, 클래스명, 신뢰도를 표시한다.
+MediaMTX와 CompressedImage 모드 모두 지원하며 rosbridge 연결이 필요하다.
+유효 Depth/TF/파지 범위 조건을 통과하지 못해도 컬러 검출 bbox는 표시되지만,
+RGB·Depth 동기화 및 CameraInfo 수신은 추론 시작에 필요하다.
+영상과 검출은 별도 수신하므로 엄밀한 프레임 동기화는 하지 않는다.
+파지 완료 후에는 인식이 종료되며 마지막 bbox는 1.2초 뒤 제거된다.
+
+기본 MediaMTX 모드에서는 person detector의 `std_msgs/msg/String` JSON bbox를
+각 카메라 영상 위에 그린다. CompressedImage 모드에서는 bbox가 이미 그려진
+person detector 영상을 직접 표시하므로 person JSON을 중복 오버레이하지 않는다.
+그 밖의 메시지 타입은 rosbridge가 현재 ROS graph에서 자동 감지한다. 표준
+`vision_msgs/msg/Detection2DArray`의 `detections[].bbox` 형식, person JSON의
+`image_size`/`detections[].xyxy` 형식과
 `xmin/ymin/xmax/ymax`, `left/top/width/height`, `xyxy` 계열 필드를 읽습니다.
 픽셀 좌표와 0~1 정규화 좌표를 모두 화면의 `object-fit: cover` 영상 영역에 맞춰
 변환합니다.

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark" />
   <title>DOLBOT CENTER | 국방로봇 모니터링</title>
-  <link rel="stylesheet" href="./styles.css?v=1.3.2-manual-ee-gripper" />
+  <link rel="stylesheet" href="./styles.css?v=1.4.2-path-emergency-detection" />
 </head>
 <body>
   <div class="app-shell">
@@ -59,6 +59,7 @@
         <div id="mainCameraStage" class="camera-stage camera-stage--main">
           <video id="mainCameraVideo" aria-label="메인 카메라 영상" muted autoplay playsinline></video>
           <img id="mainCameraImage" class="compressed-frame" alt="메인 카메라 ROS 압축 영상" />
+          <canvas id="mainCameraDetectionOverlay" class="camera-detection-overlay" aria-label="사람 감지 바운딩 박스"></canvas>
           <div class="signal-placeholder">
             <span class="signal-icon"></span>
             <strong>NO SIGNAL</strong>
@@ -232,18 +233,19 @@
         <div class="panel-heading">
           <div>
             <p>NAVIGATION / PATH</p>
-            <h2>생성된 주행 경로</h2>
+            <h2>주행 경로 2D 탑뷰</h2>
           </div>
           <div class="panel-tools">
-            <button id="recordButton" class="path-command-button path-command-button--record" type="button" disabled>RECORD</button>
+            <button id="recordButton" class="path-command-button path-command-button--record" type="button" aria-pressed="false" disabled>RECORD</button>
             <button id="returnButton" class="path-command-button" type="button" disabled>RETURN</button>
+            <button id="emergencyButton" class="path-command-button path-command-button--emergency" type="button" disabled>EMERGENCY</button>
             <span id="pathFrame" class="rate-badge">FRAME: --</span>
             <span id="pathRate" class="rate-badge">0.0 Hz</span>
           </div>
         </div>
         <div class="canvas-stage">
           <canvas id="pathCanvas"></canvas>
-          <div id="pathPlaceholder" class="canvas-placeholder">경로 토픽 대기 중</div>
+          <div id="pathPlaceholder" class="canvas-placeholder">경로 토픽 또는 RECORD 대기 중</div>
           <div class="path-metrics">
             <span>POSES <strong id="pathPoseCount">0</strong></span>
             <span>LENGTH <strong id="pathLength">0.0 m</strong></span>
@@ -452,6 +454,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/roslib@1.4.1/build/roslib.min.js"></script>
-  <script src="./app.js?v=1.3.2-manual-ee-gripper"></script>
+  <script src="./app.js?v=1.4.2-path-emergency-detection"></script>
 </body>
 </html>

@@ -109,20 +109,20 @@
 
   const COMPRESSED_CAMERA_TOPICS = {
     mainCamera: {
-      label: "메인 카메라 (주행 D455)",
-      name: "/drive/camera/color/image_raw/compressed",
+      label: "메인 카메라 (Person bbox)",
+      name: "/drive/person/detecion",
       type: "sensor_msgs/msg/CompressedImage",
       staleMs: 3000
     },
     subCamera1: {
-      label: "서브 카메라 1 (좌측)",
-      name: "/side/left/image_raw/compressed",
+      label: "서브 카메라 1 (좌측 Person bbox)",
+      name: "/left/person/detection",
       type: "sensor_msgs/msg/CompressedImage",
       staleMs: 3000
     },
     subCamera2: {
-      label: "서브 카메라 2 (우측)",
-      name: "/side/right/image_raw/compressed",
+      label: "서브 카메라 2 (우측 Person bbox)",
+      name: "/right/person/detection",
       type: "sensor_msgs/msg/CompressedImage",
       staleMs: 3000
     },
@@ -134,66 +134,61 @@
     }
   };
 
+  const LEGACY_COMPRESSED_CAMERA_TOPICS = {
+    mainCamera: ["/drive/camera/color/image_raw/compressed"],
+    subCamera1: [
+      "/side/left/image_raw/compressed",
+      "/left/camera/image_raw/compressed"
+    ],
+    subCamera2: [
+      "/side/right/image_raw/compressed",
+      "/right/camera/image_raw/compressed"
+    ]
+  };
+
   const MAX_DETECTION_BOXES_PER_TOPIC = 80;
   const DETECTION_TOPICS = {
-    springIfofLeftDetections: {
-      label: "봄 IFOF 감지 (좌측)",
-      name: "/mission/spring_ifof/left/detections",
-      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+    personDriveDetections: {
+      label: "사람 감지 (주행)",
+      name: "/person_detection/detections",
+      type: "std_msgs/msg/String",
+      staleMs: 1200,
+      throttleRate: 0,
+      cameraKey: "mainCamera",
+      overlayLabel: "PERSON",
+      color: "#7dff72",
+      mediaOnly: true
+    },
+    personLeftDetections: {
+      label: "사람 감지 (좌측)",
+      name: "/left/person/detections",
+      type: "std_msgs/msg/String",
       staleMs: 1200,
       throttleRate: 0,
       cameraKey: "subCamera1",
-      overlayLabel: "SPRING IFOF",
-      color: "#26d9ff"
+      overlayLabel: "PERSON",
+      color: "#7dff72",
+      mediaOnly: true
     },
-    springIfofRightDetections: {
-      label: "봄 IFOF 감지 (우측)",
-      name: "/mission/spring_ifof/right/detections",
-      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+    personRightDetections: {
+      label: "사람 감지 (우측)",
+      name: "/right/person/detections",
+      type: "std_msgs/msg/String",
       staleMs: 1200,
       throttleRate: 0,
       cameraKey: "subCamera2",
-      overlayLabel: "SPRING IFOF",
-      color: "#26d9ff"
+      overlayLabel: "PERSON",
+      color: "#7dff72",
+      mediaOnly: true
     },
-    fallMarkerLeftDetections: {
-      label: "가을 마커 감지 (좌측)",
-      name: "/mission/fall_marker/left/detections",
-      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
-      staleMs: 1200,
-      throttleRate: 0,
-      cameraKey: "subCamera1",
-      overlayLabel: "FALL MARKER",
-      color: "#ffb84a"
-    },
-    fallMarkerRightDetections: {
-      label: "가을 마커 감지 (우측)",
-      name: "/mission/fall_marker/right/detections",
-      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
-      staleMs: 1200,
-      throttleRate: 0,
-      cameraKey: "subCamera2",
-      overlayLabel: "FALL MARKER",
-      color: "#ffb84a"
-    },
-    summerTrafficLeftDetections: {
-      label: "여름 신호등 감지 (좌측)",
-      name: "/mission/summer_traffic/left/detections",
-      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
-      staleMs: 1200,
-      throttleRate: 0,
-      cameraKey: "subCamera1",
-      overlayLabel: "SUMMER TRAFFIC",
-      color: "#68ef8b"
-    },
-    armSummerSupplyDetections: {
-      label: "여름 보급품 감지 (로봇팔)",
-      name: "/arm/summer_supply/detections",
-      typeLabel: "ROS graph 자동 감지 (Detection2DArray 호환)",
+    armSupplyDetections: {
+      label: "보급품 감지 (로봇팔)",
+      name: "/arm/supply/detections",
+      type: "vision_msgs/msg/Detection2DArray",
       staleMs: 1200,
       throttleRate: 0,
       cameraKey: "armCamera",
-      overlayLabel: "SUMMER SUPPLY",
+      overlayLabel: "SUPPLY",
       color: "#ff71d0"
     }
   };
@@ -256,6 +251,7 @@
     connecting: false,
     demo: false,
     pathCommandPublishers: new Map(),
+    emergencyStopSent: false,
     toolCommandPublishers: new Map(),
     subscriptions: new Map(),
     topicConfig: loadTopicConfig(),
@@ -274,6 +270,11 @@
     latestArmPose: null,
     latestArmPoseAt: 0,
     latestPath: null,
+    latestTopicPath: null,
+    recordedPath: null,
+    recordedPathLength: 0,
+    isPathRecording: false,
+    pathDisplaySource: "topic",
     latestOdom: null,
     latestImu: null,
     latestDetections: new Map(),
@@ -344,6 +345,7 @@
     pathCanvas: $("pathCanvas"),
     recordButton: $("recordButton"),
     returnButton: $("returnButton"),
+    emergencyButton: $("emergencyButton"),
     armPlaceholder: $("armPlaceholder"),
     gripperHoldFlash: $("gripperHoldFlash"),
     gripperHoldStatus: $("gripperHoldStatus"),
@@ -358,6 +360,7 @@
     mainCamera: {
       video: $("mainCameraVideo"),
       image: $("mainCameraImage"),
+      detectionOverlay: $("mainCameraDetectionOverlay"),
       stage: $("mainCameraStage"),
       rate: $("mainCameraRate"),
       age: $("mainCameraAge"),
@@ -405,6 +408,21 @@
       Object.keys(merged).forEach((key) => {
         if (saved[key]?.name) merged[key].name = saved[key].name;
       });
+      // Migrate the previous supply setting while preserving custom topics.
+      const supplyTopic = saved.armSupplyDetections?.name
+        || saved.armSummerSupplyDetections?.name;
+      if (supplyTopic && supplyTopic !== "/arm/summer_supply/detections") {
+        merged.armSupplyDetections.name = supplyTopic;
+      } else {
+        merged.armSupplyDetections.name = DETECTION_TOPICS.armSupplyDetections.name;
+      }
+      if (CAMERA_TRANSPORT === "ros-compressed") {
+        Object.entries(LEGACY_COMPRESSED_CAMERA_TOPICS).forEach(([key, legacyNames]) => {
+          if (legacyNames.includes(merged[key]?.name)) {
+            merged[key].name = COMPRESSED_CAMERA_TOPICS[key].name;
+          }
+        });
+      }
       return merged;
     } catch (error) {
       console.warn("토픽 설정을 불러오지 못했습니다.", error);
@@ -497,6 +515,7 @@
     dom.rosbridgeUrl.disabled = online || busy || state.demo;
     dom.recordButton.disabled = !online;
     dom.returnButton.disabled = !online;
+    dom.emergencyButton.disabled = !online || state.emergencyStopSent;
     updateToolControls();
 
     if (mode === "online") {
@@ -572,6 +591,7 @@
       const wasConnected = state.connected;
       state.connected = false;
       state.connecting = false;
+      setPathRecordingActive(false);
       state.pathCommandPublishers.clear();
       state.toolCommandPublishers.clear();
       resetToolInteraction();
@@ -591,6 +611,7 @@
   }
 
   function disconnectRos() {
+    setPathRecordingActive(false);
     clearSubscriptions();
     clearDetectionData();
     clearPathCommandPublishers();
@@ -632,6 +653,154 @@
     state.toolCommandPublishers.clear();
   }
 
+  function createVolatilePublisher(name, messageType) {
+    const publisher = new ROSLIB.Topic({
+      ros: state.ros,
+      name,
+      messageType,
+      latch: false,
+      queue_size: 1
+    });
+
+    // ROSLIB 1.4.1 cannot pass ROS 2 QoS in an advertise request. Humble's
+    // rosbridge otherwise creates a TRANSIENT_LOCAL publisher even when latch
+    // is false, so override only the advertise payload and keep Topic's normal
+    // publish, reconnect, and unadvertise behavior.
+    publisher.advertise = function advertiseVolatile() {
+      if (this.isAdvertised) return;
+
+      this.advertiseId = `advertise:${this.name}:${++this.ros.idCounter}`;
+      this.callForSubscribeAndAdvertise({
+        op: "advertise",
+        id: this.advertiseId,
+        type: this.messageType,
+        topic: this.name,
+        latch: false,
+        queue_size: this.queue_size,
+        qos: {
+          history: "keep_last",
+          depth: 1,
+          reliability: "reliable",
+          durability: "volatile"
+        }
+      });
+      this.isAdvertised = true;
+    };
+
+    return publisher;
+  }
+
+  function setPathRecordingActive(active) {
+    state.isPathRecording = active;
+    dom.recordButton.classList.toggle("is-recording", active);
+    dom.recordButton.textContent = active ? "STOP" : "RECORD";
+    dom.recordButton.setAttribute("aria-pressed", String(active));
+  }
+
+  function requestEmergencyStop() {
+    if (state.emergencyStopSent) return;
+    if (!publishPathCommand("emergency", true)) return;
+
+    state.emergencyStopSent = true;
+    dom.emergencyButton.disabled = true;
+    dom.emergencyButton.textContent = "STOP SENT";
+    dom.emergencyButton.classList.add("is-emergency-active");
+    dom.footerMessage.textContent = "긴급정지 요청 전송 — manual return 종료 대기";
+    addLog("긴급정지 요청을 /emergency_stop에 발행했습니다.", "warning");
+  }
+
+  function showPath(pathMessage, length = null, frameSuffix = "") {
+    state.latestPath = pathMessage;
+    drawPath(pathMessage);
+
+    const poseCount = Array.isArray(pathMessage?.poses) ? pathMessage.poses.length : 0;
+    dom.pathPlaceholder.classList.toggle("hidden", poseCount > 0);
+    $("pathPoseCount").textContent = String(poseCount);
+    $("pathLength").textContent = `${(length ?? calculatePathLength(pathMessage.poses)).toFixed(1)} m`;
+    const frame = pathMessage.header?.frame_id || "--";
+    $("pathFrame").textContent = `FRAME: ${frame}${frameSuffix}`;
+  }
+
+  function appendRecordedOdometry(odometry) {
+    if (!state.isPathRecording || !state.recordedPath) return false;
+
+    const frame = odometry.frameId || "";
+    const recordedFrame = state.recordedPath.header.frame_id;
+    if (recordedFrame && frame && recordedFrame !== frame) {
+      setPathRecordingActive(false);
+      dom.footerMessage.textContent = "오도메트리 frame 변경으로 경로 기록을 중지했습니다.";
+      addLog(`경로 기록 중 frame이 ${recordedFrame}에서 ${frame}(으)로 변경됐습니다.`, "warning");
+      return false;
+    }
+    if (!recordedFrame && frame) state.recordedPath.header.frame_id = frame;
+
+    const poses = state.recordedPath.poses;
+    const last = poses[poses.length - 1]?.pose?.position;
+    const distance = last ? Math.hypot(odometry.x - last.x, odometry.y - last.y) : 0;
+
+    // 정지 중인 동일 좌표가 계속 쌓이지 않도록 3 cm 이상 이동했을 때만 추가한다.
+    if (last && distance < 0.03) return false;
+    if (poses.length >= 10000) {
+      setPathRecordingActive(false);
+      dom.footerMessage.textContent = "경로 10,000점 도달로 기록을 중지했습니다.";
+      addLog("브라우저 경로 기록 한도(10,000점)에 도달했습니다.", "warning");
+      return false;
+    }
+
+    if (last) state.recordedPathLength += distance;
+    poses.push({
+      pose: {
+        position: { x: odometry.x, y: odometry.y, z: 0 },
+        orientation: {
+          x: 0,
+          y: 0,
+          z: Math.sin(odometry.yaw / 2),
+          w: Math.cos(odometry.yaw / 2)
+        }
+      }
+    });
+    showPath(state.recordedPath, state.recordedPathLength, " / REC");
+    return true;
+  }
+
+  function togglePathRecording() {
+    const nextActive = !state.isPathRecording;
+    if (!publishPathCommand("record", nextActive)) return;
+
+    if (!nextActive) {
+      setPathRecordingActive(false);
+      if (state.recordedPath?.poses.length) {
+        showPath(state.recordedPath, state.recordedPathLength, " / RECORDED");
+      } else {
+        state.pathDisplaySource = "topic";
+        if (state.latestTopicPath) showPath(state.latestTopicPath);
+      }
+      dom.footerMessage.textContent = "오도메트리 경로 기록을 종료했습니다.";
+      addLog("2D 탑뷰 경로 기록 종료");
+      return;
+    }
+
+    state.pathDisplaySource = "recorded";
+    state.recordedPathLength = 0;
+    state.recordedPath = {
+      header: { frame_id: state.latestOdom?.frameId || "" },
+      poses: []
+    };
+    setPathRecordingActive(true);
+    showPath(state.recordedPath, 0, " / REC");
+
+    if (state.latestOdom) {
+      appendRecordedOdometry(state.latestOdom);
+      dom.footerMessage.textContent = "오도메트리 경로 기록 중";
+    } else {
+      dom.pathPlaceholder.textContent = `오도메트리 대기 중 (${state.topicConfig.odom.name})`;
+      dom.pathPlaceholder.classList.remove("hidden");
+      dom.footerMessage.textContent = `${state.topicConfig.odom.name} 수신 대기 중`;
+      addLog(`경로 기록을 시작했지만 ${state.topicConfig.odom.name}이 아직 수신되지 않았습니다.`, "warning");
+    }
+    addLog("2D 탑뷰 경로 기록 시작");
+  }
+
   function publishToolMessage(key, data) {
     const config = state.topicConfig[key];
     if (!config?.name || !state.connected || !state.ros || state.demo) {
@@ -643,11 +812,7 @@
     try {
       let publisher = state.toolCommandPublishers.get(key);
       if (!publisher) {
-        publisher = new ROSLIB.Topic({
-          ros: state.ros,
-          name: config.name,
-          messageType: config.type
-        });
+        publisher = createVolatilePublisher(config.name, config.type);
         state.toolCommandPublishers.set(key, publisher);
       }
       publisher.publish(new ROSLIB.Message({ data }));
@@ -660,39 +825,40 @@
     }
   }
 
-  function publishPathCommand(command) {
+  function publishPathCommand(command, data = true) {
     const commands = {
       record: { topic: "/path/record", label: "RECORD", button: dom.recordButton },
-      return: { topic: "/path/return", label: "RETURN", button: dom.returnButton }
+      return: { topic: "/path/return", label: "RETURN", button: dom.returnButton },
+      emergency: { topic: "/emergency_stop", label: "EMERGENCY", button: dom.emergencyButton }
     };
     const selected = commands[command];
-    if (!selected) return;
+    if (!selected) return false;
 
     if (!state.connected || !state.ros || state.demo) {
       dom.footerMessage.textContent = `ROS 연결 후 ${selected.label} 명령을 발행할 수 있습니다.`;
       addLog(`${selected.label} 발행 실패: ROS가 연결되어 있지 않습니다.`, "warning");
-      return;
+      return false;
     }
 
     try {
       let publisher = state.pathCommandPublishers.get(command);
       if (!publisher) {
-        publisher = new ROSLIB.Topic({
-          ros: state.ros,
-          name: selected.topic,
-          messageType: "std_msgs/msg/Bool"
-        });
+        publisher = createVolatilePublisher(selected.topic, "std_msgs/msg/Bool");
         state.pathCommandPublishers.set(command, publisher);
       }
 
-      publisher.publish(new ROSLIB.Message({ data: true }));
-      dom.footerMessage.textContent = `${selected.topic} = true 발행 완료`;
-      selected.button.classList.add("is-published");
-      window.setTimeout(() => selected.button.classList.remove("is-published"), 600);
-      addLog(`${selected.topic} 토픽에 true를 발행했습니다.`);
+      publisher.publish(new ROSLIB.Message({ data }));
+      dom.footerMessage.textContent = `${selected.topic} = ${String(data)} 발행 완료`;
+      if (command === "return") {
+        selected.button.classList.add("is-published");
+        window.setTimeout(() => selected.button.classList.remove("is-published"), 600);
+      }
+      addLog(`${selected.topic} 토픽에 ${String(data)}를 발행했습니다.`);
+      return true;
     } catch (error) {
       dom.footerMessage.textContent = `${selected.label} 명령 발행 실패`;
       addLog(`${selected.label} 발행 실패: ${extractErrorMessage(error)}`, "error");
+      return false;
     }
   }
 
@@ -725,6 +891,7 @@
     subscribeTopic("missionStatus", handleMissionStatus);
     subscribeTopic("diagnostics", handleDiagnostics);
     Object.keys(DETECTION_TOPICS).forEach((key) => {
+      if (DETECTION_TOPICS[key].mediaOnly && CAMERA_TRANSPORT !== "media") return;
       subscribeTopic(key, handleDetections);
     });
     if (CAMERA_TRANSPORT === "ros-compressed") {
@@ -1341,13 +1508,8 @@
 
   function handlePath(message) {
     if (!Array.isArray(message?.poses)) return;
-    state.latestPath = message;
-    drawPath(message);
-    dom.pathPlaceholder.classList.add("hidden");
-
-    $("pathPoseCount").textContent = String(message.poses.length);
-    $("pathLength").textContent = `${calculatePathLength(message.poses).toFixed(1)} m`;
-    $("pathFrame").textContent = `FRAME: ${message.header?.frame_id || "--"}`;
+    state.latestTopicPath = message;
+    if (state.pathDisplaySource === "topic") showPath(message);
   }
 
   function handleOdometry(message) {
@@ -1375,7 +1537,8 @@
     $("hudSpeed").textContent = `${speed.toFixed(2)} m/s`;
     $("cameraAzimuth").textContent = `${normalizeDegrees(radToDeg(rpy.yaw)).toFixed(1).padStart(5, "0")}°`;
 
-    if (state.latestPath) drawPath(state.latestPath);
+    const appended = appendRecordedOdometry(state.latestOdom);
+    if (!appended && state.latestPath) drawPath(state.latestPath);
   }
 
   function handleImu(message) {
@@ -1476,6 +1639,16 @@
     return candidates.find(Array.isArray) || [];
   }
 
+  function detectionPayload(message) {
+    if (typeof message?.data !== "string") return message;
+    try {
+      const parsed = JSON.parse(message.data);
+      return parsed && typeof parsed === "object" ? parsed : message;
+    } catch (error) {
+      return message;
+    }
+  }
+
   function detectionResult(detection) {
     const results = Array.isArray(detection?.results) ? detection.results : [];
     const best = results.reduce((selected, result) => {
@@ -1564,12 +1737,14 @@
       width: firstFinite(
         message?.image_width,
         message?.source_width,
+        message?.image_size?.width,
         message?.image?.width,
         message?.source?.width
       ),
       height: firstFinite(
         message?.image_height,
         message?.source_height,
+        message?.image_size?.height,
         message?.image?.height,
         message?.source?.height
       )
@@ -1599,6 +1774,7 @@
     const now = Date.now();
     Object.entries(DETECTION_TOPICS).forEach(([topicKey, config]) => {
       if (config.cameraKey !== cameraKey) return;
+      if (config.mediaOnly && CAMERA_TRANSPORT !== "media") return;
       const detectionState = state.latestDetections.get(topicKey);
       if (!detectionState || now - detectionState.receivedAt > config.staleMs) return;
 
@@ -1654,6 +1830,7 @@
   function hasFreshDetections(cameraKey) {
     const now = Date.now();
     return Object.entries(DETECTION_TOPICS).some(([topicKey, config]) => {
+      if (config.mediaOnly && CAMERA_TRANSPORT !== "media") return false;
       const detectionState = state.latestDetections.get(topicKey);
       return config.cameraKey === cameraKey
         && detectionState?.boxes?.length > 0
@@ -1675,7 +1852,7 @@
   }
 
   function drawAllDetectionOverlays() {
-    ["subCamera1", "subCamera2", "armCamera"].forEach(scheduleDetectionOverlay);
+    ["mainCamera", "subCamera1", "subCamera2", "armCamera"].forEach(scheduleDetectionOverlay);
   }
 
   function clearDetectionData() {
@@ -1723,8 +1900,9 @@
   function handleDetections(message, key) {
     const config = DETECTION_TOPICS[key];
     if (!config) return;
-    const source = detectionSourceSize(message);
-    const boxes = detectionItems(message)
+    const payload = detectionPayload(message);
+    const source = detectionSourceSize(payload);
+    const boxes = detectionItems(payload)
       .slice(0, MAX_DETECTION_BOXES_PER_TOPIC)
       .map(parseDetectionBox)
       .filter(Boolean);
@@ -1977,31 +2155,99 @@
 
     if (points.length < 1) return;
 
-    const xs = points.map((point) => point.x);
-    const ys = points.map((point) => point.y);
+    const pathFrame = pathMessage.header?.frame_id || "";
+    const robotInFrame = state.latestOdom && pathFrame && state.latestOdom.frameId === pathFrame;
+    const viewPoints = robotInFrame
+      ? [...points, { x: state.latestOdom.x, y: state.latestOdom.y }]
+      : points;
+    const xs = viewPoints.map((point) => point.x);
+    const ys = viewPoints.map((point) => point.y);
     let minX = Math.min(...xs);
     let maxX = Math.max(...xs);
     let minY = Math.min(...ys);
     let maxY = Math.max(...ys);
 
-    if (Math.abs(maxX - minX) < 0.5) {
-      minX -= 0.25;
-      maxX += 0.25;
+    if (Math.abs(maxX - minX) < 1) {
+      const centerX = (minX + maxX) / 2;
+      minX = centerX - 0.5;
+      maxX = centerX + 0.5;
     }
-    if (Math.abs(maxY - minY) < 0.5) {
-      minY -= 0.25;
-      maxY += 0.25;
+    if (Math.abs(maxY - minY) < 1) {
+      const centerY = (minY + maxY) / 2;
+      minY = centerY - 0.5;
+      maxY = centerY + 0.5;
     }
 
-    const padding = 24;
-    const scaleX = (width - padding * 2) / (maxX - minX);
-    const scaleY = (height - padding * 2) / (maxY - minY);
-    const scale = Math.min(scaleX, scaleY);
+    const padding = { left: 44, right: 24, top: 34, bottom: 34 };
+    const plotWidth = Math.max(1, width - padding.left - padding.right);
+    const plotHeight = Math.max(1, height - padding.top - padding.bottom);
+    const scale = Math.max(1, Math.min(plotWidth / (maxX - minX), plotHeight / (maxY - minY)));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const viewWidth = plotWidth / scale;
+    const viewHeight = plotHeight / scale;
+    minX = centerX - viewWidth / 2;
+    maxX = centerX + viewWidth / 2;
+    minY = centerY - viewHeight / 2;
+    maxY = centerY + viewHeight / 2;
 
     const toCanvas = (point) => ({
-      x: padding + (point.x - minX) * scale,
-      y: height - padding - (point.y - minY) * scale
+      x: padding.left + (point.x - minX) * scale,
+      y: height - padding.bottom - (point.y - minY) * scale
     });
+
+    const targetGridSize = 55 / scale;
+    const gridMagnitude = 10 ** Math.floor(Math.log10(targetGridSize));
+    const normalizedGridSize = targetGridSize / gridMagnitude;
+    const gridFactor = normalizedGridSize <= 1 ? 1 : normalizedGridSize <= 2 ? 2 : normalizedGridSize <= 5 ? 5 : 10;
+    const gridStep = gridFactor * gridMagnitude;
+    const gridDigits = gridStep < 0.1 ? 2 : gridStep < 1 ? 1 : 0;
+    const formatGridValue = (value) => {
+      const normalized = Math.abs(value) < gridStep / 100 ? 0 : value;
+      return normalized.toFixed(gridDigits);
+    };
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.font = '9px "IBM Plex Mono", monospace';
+    ctx.textBaseline = "top";
+
+    for (let x = Math.ceil(minX / gridStep) * gridStep; x <= maxX + gridStep * 0.01; x += gridStep) {
+      const canvasX = toCanvas({ x, y: 0 }).x;
+      ctx.strokeStyle = Math.abs(x) < gridStep / 100
+        ? "rgba(101, 199, 247, 0.35)"
+        : "rgba(128, 146, 164, 0.14)";
+      ctx.beginPath();
+      ctx.moveTo(canvasX, padding.top);
+      ctx.lineTo(canvasX, height - padding.bottom);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(160, 179, 196, 0.72)";
+      ctx.textAlign = "center";
+      ctx.fillText(formatGridValue(x), canvasX, height - padding.bottom + 7);
+    }
+
+    for (let y = Math.ceil(minY / gridStep) * gridStep; y <= maxY + gridStep * 0.01; y += gridStep) {
+      const canvasY = toCanvas({ x: 0, y }).y;
+      ctx.strokeStyle = Math.abs(y) < gridStep / 100
+        ? "rgba(101, 199, 247, 0.35)"
+        : "rgba(128, 146, 164, 0.14)";
+      ctx.beginPath();
+      ctx.moveTo(padding.left, canvasY);
+      ctx.lineTo(width - padding.right, canvasY);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(160, 179, 196, 0.72)";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(formatGridValue(y), padding.left - 7, canvasY);
+    }
+
+    ctx.fillStyle = "rgba(160, 179, 196, 0.84)";
+    ctx.font = '10px "IBM Plex Mono", monospace';
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText(`TOP VIEW X-Y  GRID ${gridStep.toFixed(gridDigits)} m`, padding.left, 10);
+    ctx.textAlign = "right";
+    ctx.fillText("+Y ↑   +X →", width - padding.right, 10);
 
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#4da3ff";
@@ -2030,10 +2276,8 @@
     ctx.arc(end.x, end.y, 6, 0, Math.PI * 2);
     ctx.fill();
 
-    const pathFrame = pathMessage.header?.frame_id || "";
-    if (state.latestOdom && pathFrame && state.latestOdom.frameId === pathFrame) {
+    if (robotInFrame) {
       const robot = toCanvas({ x: state.latestOdom.x, y: state.latestOdom.y });
-      ctx.save();
       ctx.translate(robot.x, robot.y);
       ctx.rotate(-state.latestOdom.yaw + Math.PI / 2);
       ctx.fillStyle = "#e7eef5";
@@ -2043,8 +2287,8 @@
       ctx.lineTo(6, 7);
       ctx.closePath();
       ctx.fill();
-      ctx.restore();
     }
+    ctx.restore();
   }
 
   function updateRatesAndAges() {
@@ -2066,7 +2310,12 @@
 
       const rateElement = $(`${key}Rate`);
       if (rateElement) {
-        rateElement.textContent = `${stat.hz.toFixed(1)} Hz`;
+        if (key === "path" && state.pathDisplaySource === "recorded") {
+          const odomRate = state.topicStats.get("odom")?.hz || 0;
+          rateElement.textContent = `ODOM ${odomRate.toFixed(1)} Hz`;
+        } else {
+          rateElement.textContent = `${stat.hz.toFixed(1)} Hz`;
+        }
       }
 
       if (CAMERA_TRANSPORT === "ros-compressed" && cameraBindings[key]) {
@@ -2628,6 +2877,8 @@
     }
 
     const path = { header: { frame_id: "map" }, poses };
+    state.pathDisplaySource = "topic";
+    state.latestTopicPath = path;
     state.latestPath = path;
     drawPath(path);
     dom.pathPlaceholder.classList.add("hidden");
@@ -2754,6 +3005,11 @@
 
     state.latestJointState = null;
     state.latestPath = null;
+    state.latestTopicPath = null;
+    state.recordedPath = null;
+    state.recordedPathLength = 0;
+    state.pathDisplaySource = "topic";
+    setPathRecordingActive(false);
     state.latestOdom = null;
     state.latestImu = null;
 
@@ -2762,6 +3018,7 @@
     const path = prepareCanvas(dom.pathCanvas);
     path.ctx.clearRect(0, 0, path.width, path.height);
     dom.armPlaceholder.classList.remove("hidden");
+    dom.pathPlaceholder.textContent = "경로 토픽 또는 RECORD 대기 중";
     dom.pathPlaceholder.classList.remove("hidden");
     dom.jointStateList.innerHTML = '<div class="joint-state-empty">관절 데이터 미수신</div>';
 
@@ -3163,8 +3420,9 @@
     dom.connectButton.addEventListener("click", connectRos);
     dom.disconnectButton.addEventListener("click", disconnectRos);
     dom.demoToggle.addEventListener("change", (event) => toggleDemo(event.target.checked));
-    dom.recordButton.addEventListener("click", () => publishPathCommand("record"));
+    dom.recordButton.addEventListener("click", togglePathRecording);
     dom.returnButton.addEventListener("click", () => publishPathCommand("return"));
+    dom.emergencyButton.addEventListener("click", requestEmergencyStop);
     dom.toolIdSelect.addEventListener("change", (event) => {
       requestToolChange(Number(event.target.value));
     });
@@ -3196,6 +3454,7 @@
     window.addEventListener("beforeunload", () => {
       stopAllMedia();
       clearSubscriptions();
+      clearDetectionData();
       clearPathCommandPublishers();
       clearToolCommandPublishers();
       if (state.ros) state.ros.close();
@@ -3205,6 +3464,7 @@
       state.resizeObserver = new ResizeObserver(handleResize);
       state.resizeObserver.observe(dom.armKinematicsCanvas.parentElement);
       state.resizeObserver.observe(dom.pathCanvas.parentElement);
+      Object.values(cameraBindings).forEach((binding) => state.resizeObserver.observe(binding.stage));
     } else {
       window.addEventListener("resize", handleResize);
     }

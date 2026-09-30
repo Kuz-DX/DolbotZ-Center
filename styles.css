@@ -1878,6 +1878,42 @@ body.camera-column-resizing * {
   color: #7ce8bd;
 }
 
+.path-command-button--record.is-recording {
+  border-color: #ff765f;
+  background: rgba(224, 67, 49, 0.28);
+  color: #fff0ec;
+  box-shadow: 0 0 12px rgba(224, 67, 49, 0.24);
+}
+
+.path-command-button--emergency {
+  padding-inline: 7px;
+  border-color: #a33f3f;
+  background: rgba(180, 35, 35, 0.2);
+  color: #ff8585;
+}
+
+.path-command-button--emergency:hover:not(:disabled),
+.path-command-button--emergency:focus-visible:not(:disabled),
+.path-command-button--emergency.is-emergency-active {
+  border-color: #ff5252;
+  background: rgba(210, 32, 32, 0.42);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(255, 50, 50, 0.3);
+}
+
+.path-command-button--emergency.is-emergency-active:disabled {
+  opacity: 1;
+}
+
+.path-panel #pathFrame {
+  max-width: 88px;
+  height: 23px;
+  padding-inline: 5px;
+  overflow: hidden;
+  font-size: 0.5rem;
+  text-overflow: ellipsis;
+}
+
 .fullscreen-button {
   border-color: #35495b;
   background: #101821;

@@ -199,14 +199,22 @@ web_ui_topics:
       - "slope"
     ui_outputs:
       - "플랫폼 상태 문자열"
-    caution: >-
-      실제 계절 미션 결과는 mission_manager_interfaces/msg/MissionResult라서
-      웹 UI의 std_msgs/String 구독과 직접 호환되지 않는다.
-    incompatible_mission_result_topics:
-      - "/mission/spring_ifof/result"
-      - "/mission/summer_traffic/result"
-      - "/mission/fall_marker/result"
-      - "/mission/escort_follow/result"
+
+  personDriveDetections:
+    label: "Drive 사람 감지 박스"
+    name: "/person_detection/detections"
+    type: "std_msgs/msg/String"
+    stale_ms: 1200
+    throttle_rate_ms: 0
+    match: "direct"
+    publisher: "vision/person_detection"
+    source: "src/vision/vision/person_detection.py"
+    payload:
+      image_size: "{width, height}"
+      detections: "[{class_name, confidence, xyxy}]"
+    ui_outputs:
+      - "Drive MediaMTX 영상 위 사람 bounding box"
+      - "클래스 이름과 confidence"
 
   diagnostics:
     label: "진단"
@@ -230,34 +238,34 @@ web_ui_topics:
 
 compressed_camera_topics:
   mainCamera:
-    label: "메인 카메라 / 주행용 D455 컬러"
-    name: "/drive/camera/color/image_raw/compressed"
+    label: "메인 카메라 / 주행용 person bbox"
+    name: "/drive/person/detecion"
     type: "sensor_msgs/msg/CompressedImage"
     stale_ms: 3000
     match: "direct"
-    publisher: "realsense2_camera + compressed_image_transport (drive_cam.launch.py)"
-    source: "src/dolbotz/config/realsense_cameras.yaml"
-    configured_profile: "424x240@15"
+    publisher: "vision/person_detection"
+    source: "src/vision/vision/person_detection.py"
+    input_topic: "/drive/camera/color/image_raw/compressed"
 
   subCamera1:
-    label: "서브 카메라 1 / 좌측 USB 카메라"
-    name: "/side/left/image_raw/compressed"
+    label: "서브 카메라 1 / 좌측 person bbox"
+    name: "/left/person/detection"
     type: "sensor_msgs/msg/CompressedImage"
     stale_ms: 3000
     match: "direct"
-    publisher: "usb_cam (side_cameras.launch.py, namespace=side/left)"
-    source: "src/dolbotz/launch/side_cameras.launch.py"
-    configured_profile: "640x480@15 MJPEG"
+    publisher: "vision/person_detection"
+    source: "src/vision/vision/person_detection.py"
+    input_topic: "/side/left/image_raw/compressed"
 
   subCamera2:
-    label: "서브 카메라 2 / 우측 USB 카메라"
-    name: "/side/right/image_raw/compressed"
+    label: "서브 카메라 2 / 우측 person bbox"
+    name: "/right/person/detection"
     type: "sensor_msgs/msg/CompressedImage"
     stale_ms: 3000
     match: "direct"
-    publisher: "usb_cam (side_cameras.launch.py, namespace=side/right)"
-    source: "src/dolbotz/launch/side_cameras.launch.py"
-    configured_profile: "640x480@15 MJPEG"
+    publisher: "vision/person_detection"
+    source: "src/vision/vision/person_detection.py"
+    input_topic: "/side/right/image_raw/compressed"
 
   armCamera:
     label: "로봇팔 카메라 / 팔 D455 컬러"
@@ -270,26 +278,27 @@ compressed_camera_topics:
     configured_profile: "640x480@15"
 
 detection_overlay_topics:
-  message_type: "ROS graph 자동 감지"
+  message_type: "vision_msgs/Detection2DArray 또는 std_msgs/String JSON"
   throttle_rate_ms: 0
-  render_mode: "active detection이 있는 동안 camera frame마다 requestAnimationFrame 갱신"
+  render_mode: "각 카메라 영상 위 투명 canvas"
   stale_ms: 1200
   max_boxes_per_topic: 80
+  drive:
+    image_topic: "/drive/camera/color/image_raw/compressed"
+    detections:
+      - "/person_detection/detections"
   left:
     image_topic: "/side/left/image_raw/compressed"
     detections:
-      - "/mission/spring_ifof/left/detections"
-      - "/mission/fall_marker/left/detections"
-      - "/mission/summer_traffic/left/detections"
+      - "/left/person/detections"
   right:
     image_topic: "/side/right/image_raw/compressed"
     detections:
-      - "/mission/spring_ifof/right/detections"
-      - "/mission/fall_marker/right/detections"
+      - "/right/person/detections"
   arm:
     image_topic: "/arm/camera/color/image_raw/compressed"
     detections:
-      - "/arm/summer_supply/detections"
+      - "/arm/supply/detections"
 
 camera_transport_profiles:
   media_server:
