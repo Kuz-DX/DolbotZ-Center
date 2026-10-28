@@ -39,11 +39,20 @@
       staleMs: 5000,
       trackHealth: false
     },
-    armPose: {
-      label: "로봇팔 실좌표(TF)",
-      name: "/arm/joint_pose_array",
-      type: "geometry_msgs/msg/PoseArray",
-      staleMs: 2000
+    armTf: {
+      label: "로봇팔 TF",
+      name: "/tf",
+      type: "tf2_msgs/msg/TFMessage",
+      staleMs: 2000,
+      throttleRate: 0
+    },
+    armTfStatic: {
+      label: "로봇팔 고정 TF",
+      name: "/tf_static",
+      type: "tf2_msgs/msg/TFMessage",
+      staleMs: 2147483647,
+      throttleRate: 0,
+      trackHealth: false
     },
     armTargetPointBase: {
       label: "로봇팔 목표 좌표",
@@ -127,8 +136,8 @@
       staleMs: 3000
     },
     armCamera: {
-      label: "로봇팔 카메라 (팔 D455)",
-      name: "/arm/camera/color/image_raw/compressed",
+      label: "로봇팔 카메라 (Person bbox)",
+      name: "/arm/person/detection",
       type: "sensor_msgs/msg/CompressedImage",
       staleMs: 3000
     }
@@ -143,7 +152,8 @@
     subCamera2: [
       "/side/right/image_raw/compressed",
       "/right/camera/image_raw/compressed"
-    ]
+    ],
+    armCamera: ["/arm/camera/color/image_raw/compressed"]
   };
 
   const MAX_DETECTION_BOXES_PER_TOPIC = 80;
@@ -177,6 +187,17 @@
       staleMs: 1200,
       throttleRate: 0,
       cameraKey: "subCamera2",
+      overlayLabel: "PERSON",
+      color: "#7dff72",
+      mediaOnly: true
+    },
+    personArmDetections: {
+      label: "사람 감지 (로봇팔)",
+      name: "/arm/person/detections",
+      type: "std_msgs/msg/String",
+      staleMs: 1200,
+      throttleRate: 0,
+      cameraKey: "armCamera",
       overlayLabel: "PERSON",
       color: "#7dff72",
       mediaOnly: true
@@ -229,14 +250,14 @@
     }
   };
 
-  // army_manipulator 실측값(army_manipulator_macro.xacro의 L1/L2/L3 property,
-  // ARM_JOINT_NAMES 순서)으로 맞춤 - base_joint(수직축 회전)는 이 UI가 가정하는
-  // X-Z 평면 체인에 안 맞아 제외, shoulder/elbow/wrist 3개만 사용.
-  // angleOffsetsDeg/angleDirections는 실측 없이 정할 수 없어 중립값(0/+1)으로
-  // 두고 실기(또는 mock_bringup)로 관절을 움직여보면서 톱니바퀴 설정에서
-  // 직접 맞출 것 - README 8절의 예시값(90,0,0 / 1,-1,1)은 이 로봇 것이 아님.
+  // ResKU tool_manipulator.urdf.xacro: arm_world 기준 TCP까지의 체인.
+  const ARM_JOINT_NAMES = ["base_joint", "shoulder_joint", "elbow_joint",
+    "wrist_pitch_joint", "wrist_roll_joint", "wrist_yaw_joint", "ee_joint"];
+  const ARM_TF_FRAMES = ["base_actuator", "base_link", "shoulder_link", "elbow_link",
+    "wrist_link_pitch", "wrist_link_roll", "wrist_link_yaw", "ee_actuator", "tcp_link"];
+  // 평면 모델은 데모 전용. 실기 좌표는 TF로만 표시한다.
   const DEFAULT_ARM_MODEL = {
-    jointOrder: ["shoulder_joint", "elbow_joint", "wrist_joint"],
+    jointOrder: ["shoulder_joint", "elbow_joint", "wrist_pitch_joint"],
     linkLengths: [0.18, 0.22, 0.15],
     angleOffsetsDeg: [0, 0, 0, 0, 0, 0],
     angleDirections: [1, 1, 1, 1, 1, 1],
@@ -266,6 +287,8 @@
     toolChangeActive: false,
     pickingBoxTimer: null,
     topicStats: new Map(),
+    armTransforms: new Map(),
+    latestJointStateAt: 0,
     latestJointState: null,
     latestArmPose: null,
     latestArmPoseAt: 0,
@@ -879,7 +902,8 @@
     subscribeTopic("toolId", handleToolId);
     subscribeTopic("jointStates", handleJointState);
     subscribeTopic("gripperHoldFinished", handleGripperHoldFinished);
-    subscribeTopic("armPose", handleArmPose);
+    subscribeTopic("armTf", handleArmTf);
+    subscribeTopic("armTfStatic", handleArmTf);
     subscribeTopic("armTargetPointBase", handleArmTargetPointBase);
     subscribeTopic("path", handlePath);
     subscribeTopic("odom", handleOdometry);
@@ -912,7 +936,7 @@
         ros: state.ros,
         name: config.name,
         throttle_rate: config.throttleRate ?? 50,
-        queue_length: 1,
+        queue_length: key === "armTf" || key === "armTfStatic" ? 100 : 1,
         compression: "none"
       };
       if (config.type) topicOptions.messageType = config.type;
@@ -938,6 +962,7 @@
       }
     });
     state.subscriptions.clear();
+    resetArmTelemetry();
   }
 
   function initMediaStats() {
@@ -1232,8 +1257,41 @@
   }
 
   function isArmPoseFresh() {
-    const staleMs = state.topicConfig.armPose?.staleMs ?? 2000;
-    return state.latestArmPoseAt > 0 && (Date.now() - state.latestArmPoseAt) < staleMs;
+    return state.latestArmPoseAt > 0 && Date.now() - state.latestArmPoseAt < state.topicConfig.armTf.staleMs;
+  }
+
+  function resetArmTelemetry() {
+    state.armTransforms.clear();
+    state.latestArmPose = null;
+    state.latestArmPoseAt = 0;
+    state.latestJointState = null;
+    state.latestJointStateAt = 0;
+    dom.jointStateList.innerHTML = '<div class="joint-state-empty">관절 데이터 미수신</div>';
+    $("armJointCount").textContent = "0";
+    refreshArmView();
+  }
+
+  function refreshArmView() {
+    if (state.demo) {
+      if (state.latestJointState) drawArmKinematics(state.latestJointState);
+      setText("armTfStatus", "DEMO · 평면 근사");
+      return;
+    }
+    const fresh = isArmPoseFresh();
+    setText("armTfStatus", fresh ? "TF · arm_world" : "TF 대기 / 수신 중단");
+    dom.armPlaceholder.textContent = "로봇팔 /tf · /tf_static 대기 중";
+    dom.armPlaceholder.classList.toggle("hidden", fresh);
+    drawArmKinematics(fresh ? state.latestArmPose : null);
+    setText("armReach", fresh ? `${state.latestArmPose.reach.toFixed(2)} m` : "-- m");
+    const end = fresh ? state.latestArmPose.endEffector : null;
+    setText("endEffectorPosition", end
+      ? `TCP X ${end.x.toFixed(3)} / Y ${end.y.toFixed(3)} / Z ${end.z.toFixed(3)} m`
+      : "TCP X -- / Y -- / Z --");
+    if (state.latestJointStateAt && Date.now() - state.latestJointStateAt >= state.topicConfig.jointStates.staleMs) {
+      dom.jointStateList.innerHTML = '<div class="joint-state-empty">관절 상태 수신 중단</div>';
+      setText("armJointCount", "0");
+      setText("rmdDps", "-- deg/s");
+    }
   }
 
   function updateRmdDps(velocities) {
@@ -1251,6 +1309,7 @@
 
   function handleJointState(message) {
     if (!Array.isArray(message?.name) || !Array.isArray(message?.position)) return;
+    if (!state.demo && !message.name.some((name) => ARM_JOINT_NAMES.includes(name))) return;
 
     const resolved = resolveArmJointState(message);
     if (!resolved.names.length) {
@@ -1259,21 +1318,16 @@
     }
 
     state.latestJointState = resolved;
-    updateRmdDps(Array.isArray(message.velocity) ? message.velocity : []);
+    state.latestJointStateAt = Date.now();
+    const indices = ["shoulder_joint", "elbow_joint", "wrist_pitch_joint"].map((name) => message.name.indexOf(name));
+    updateRmdDps(indices.map((index) => message.velocity?.[index] ?? NaN));
     renderJointStateList(resolved);
-    $("armJointCount").textContent = String(resolved.names.length);
-    dom.armPlaceholder.classList.add("hidden");
-
-    // /arm/joint_pose_array(TF 실측 좌표)가 최근에 들어오고 있으면 그쪽이
-    // 실제 월드 X-Z 좌표라 더 정확함 - 캔버스/도달거리/EE 표시는 그쪽에
-    // 맡기고 여기서는 각도 목록만 갱신한다. angleOffsetsDeg/angleDirections
-    // 톱니바퀴 근사는 armPose 토픽이 없을 때의 폴백으로만 쓴다.
-    if (isArmPoseFresh()) return;
-
-    drawArmKinematics(resolved);
-    $("armReach").textContent = `${resolved.reach.toFixed(2)} m`;
-    $("endEffectorPosition").textContent =
-      `EE X ${resolved.endEffector.x.toFixed(2)} / Z ${resolved.endEffector.z.toFixed(2)}`;
+    $("armJointCount").textContent = String(resolved.positions.filter(Number.isFinite).length);
+    if (state.demo) {
+      dom.armPlaceholder.classList.add("hidden");
+      setText("armReach", `${resolved.reach.toFixed(2)} m`);
+    }
+    refreshArmView();
   }
 
   function messageBoolean(value) {
@@ -1377,37 +1431,59 @@
     dom.gripperHoldUnavailable.classList.add("hidden");
   }
 
-  function handleArmPose(message) {
-    if (!Array.isArray(message?.poses) || !message.poses.length) return;
+  function rotateArmVector(q, v) {
+    const tx = 2 * (q.y * v.z - q.z * v.y);
+    const ty = 2 * (q.z * v.x - q.x * v.z);
+    const tz = 2 * (q.x * v.y - q.y * v.x);
+    return { x: v.x + q.w * tx + q.y * tz - q.z * ty,
+      y: v.y + q.w * ty + q.z * tx - q.x * tz,
+      z: v.z + q.w * tz + q.x * ty - q.y * tx };
+  }
 
-    const points = message.poses.map((pose) => ({
-      x: Number(pose?.position?.x) || 0,
-      z: Number(pose?.position?.z) || 0
-    }));
-
-    let totalLength = 0;
-    for (let index = 1; index < points.length; index += 1) {
-      totalLength += Math.hypot(
-        points[index].x - points[index - 1].x,
-        points[index].z - points[index - 1].z
-      );
+  function handleArmTf(message, key) {
+    if (!Array.isArray(message?.transforms)) return;
+    const now = Date.now();
+    for (const tf of message.transforms) {
+      const child = String(tf.child_frame_id || "").replace(/^\/+/, "");
+      const parent = String(tf.header?.frame_id || "").replace(/^\/+/, "");
+      if (!ARM_TF_FRAMES.includes(child) || !parent || parent === child) continue;
+      const t = tf.transform?.translation;
+      const q = tf.transform?.rotation;
+      if (![t?.x, t?.y, t?.z, q?.x, q?.y, q?.z, q?.w].every(Number.isFinite)) continue;
+      const norm = Math.hypot(q.x, q.y, q.z, q.w);
+      if (norm < 1e-9) continue;
+      state.armTransforms.set(child, { parent, t,
+        q: { x: q.x / norm, y: q.y / norm, z: q.z / norm, w: q.w / norm },
+        at: key === "armTfStatic" ? Infinity : now });
     }
-
+    const points = [];
+    let oldest = now;
+    for (const frame of ARM_TF_FRAMES) {
+      let cursor = frame;
+      let point = { x: 0, y: 0, z: 0 };
+      const visited = new Set();
+      while (cursor !== "arm_world") {
+        const edge = state.armTransforms.get(cursor);
+        if (!edge || visited.has(cursor) || now - edge.at >= state.topicConfig.armTf.staleMs) {
+          state.latestArmPoseAt = 0;
+          refreshArmView();
+          return;
+        }
+        visited.add(cursor);
+        oldest = Math.min(oldest, edge.at);
+        const rotated = rotateArmVector(edge.q, point);
+        point = { x: rotated.x + edge.t.x, y: rotated.y + edge.t.y, z: rotated.z + edge.t.z };
+        cursor = edge.parent;
+      }
+      points.push(point);
+    }
     const endEffector = points[points.length - 1];
-    const resolved = {
-      points,
-      linkAngles: [],
-      totalLength,
-      endEffector,
-      reach: Math.hypot(endEffector.x, endEffector.z)
-    };
-
-    state.latestArmPose = resolved;
-    state.latestArmPoseAt = Date.now();
-    drawArmKinematics(resolved);
-    dom.armPlaceholder.classList.add("hidden");
-
-    $("armReach").textContent = `${resolved.reach.toFixed(2)} m`;
+    const totalLength = points.slice(1).reduce((sum, point, i) => sum + Math.hypot(
+      point.x - points[i].x, point.y - points[i].y, point.z - points[i].z), 0);
+    state.latestArmPose = { points, endEffector, totalLength, linkAngles: [],
+      reach: Math.hypot(endEffector.x, endEffector.y, endEffector.z) };
+    state.latestArmPoseAt = oldest;
+    refreshArmView();
   }
 
   function handleArmTargetPointBase(message) {
@@ -1422,19 +1498,22 @@
     const incomingNames = message.name.map(String);
     const indexByName = new Map(incomingNames.map((name, index) => [name, index]));
     const configuredOrder = state.armModel.jointOrder.filter((name) => indexByName.has(name));
-    const names = (configuredOrder.length ? configuredOrder : incomingNames)
-      .slice(0, state.armModel.maxJoints);
+    const names = state.demo
+      ? (configuredOrder.length ? configuredOrder : incomingNames).slice(0, state.armModel.maxJoints)
+      : ARM_JOINT_NAMES;
 
     const positions = names.map((name) => {
-      const value = Number(message.position[indexByName.get(name)]);
-      return Number.isFinite(value) ? value : 0;
+      const value = message.position[indexByName.get(name)];
+      return Number.isFinite(value) ? value : null;
     });
 
     const velocities = names.map((name) => {
       const index = indexByName.get(name);
-      const value = Number(message.velocity?.[index]);
+      const value = message.velocity?.[index];
       return Number.isFinite(value) ? value : null;
     });
+
+    if (!state.demo) return { names, positions, velocities };
 
     let x = 0;
     let z = 0;
@@ -1492,7 +1571,7 @@
 
       const angleNode = document.createElement("span");
       angleNode.className = "joint-angle";
-      angleNode.textContent = `${radToDeg(model.positions[index]).toFixed(1)}°`;
+      angleNode.textContent = model.positions[index] === null ? "--°" : `${radToDeg(model.positions[index]).toFixed(1)}°`;
 
       const velocityNode = document.createElement("span");
       velocityNode.className = "joint-velocity";
@@ -2137,7 +2216,7 @@
 
     ctx.fillStyle = "rgba(231, 238, 245, 0.68)";
     ctx.font = '10px "IBM Plex Mono", monospace';
-    ctx.fillText("+X", width - margin, originY - 7);
+    ctx.fillText("+X", margin, originY - 7);
     ctx.fillText("+Z", originX + 7, margin + 8);
 
     ctx.restore();
@@ -2292,6 +2371,7 @@
   }
 
   function updateRatesAndAges() {
+    refreshArmView();
     const nowPerf = performance.now();
     const now = Date.now();
     let active = 0;
@@ -2829,7 +2909,7 @@
 
   function demoArm(t) {
     const message = {
-      name: ["shoulder_joint", "elbow_joint", "wrist_joint", "tool_joint"],
+      name: ["shoulder_joint", "elbow_joint", "wrist_pitch_joint", "tool_joint"],
       position: [
         0.32 * Math.sin(t * 0.55),
         0.70 * Math.sin(t * 0.42 + 0.7),
@@ -3003,7 +3083,7 @@
       binding.age.textContent = "대기 중";
     });
 
-    state.latestJointState = null;
+    resetArmTelemetry();
     state.latestPath = null;
     state.latestTopicPath = null;
     state.recordedPath = null;
@@ -3051,7 +3131,7 @@
   }
 
   function handleResize() {
-    if (state.latestJointState) drawArmKinematics(state.latestJointState);
+    refreshArmView();
     if (state.latestPath) drawPath(state.latestPath);
     drawAllDetectionOverlays();
   }

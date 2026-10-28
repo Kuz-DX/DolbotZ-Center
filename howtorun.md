@@ -1,5 +1,17 @@
 # DOLBOT CENTER 실행 방법
 
+## 로봇팔 Person bbox 표시
+
+로봇팔 카메라와 함께 person 추론을 실행한다.
+
+```bash
+ros2 launch vision person_detection.launch.py
+```
+
+`index-compressed.html`은 `/arm/person/detection`의 박스 표시 영상을 사용한다.
+`index.html`(MediaMTX)은 기존 팔 영상 위에 `/arm/person/detections` JSON으로
+사람 박스를 표시한다. 두 모드 모두 rosbridge 연결이 필요하다.
+
 ## 로봇팔 Supply box bbox 표시
 
 팔 RGB·정렬 Depth·CameraInfo 및 팔 TF가 실행 중인 로봇에서:
@@ -11,7 +23,8 @@ ros2 launch vision supply.launch.py
 UI에서 rosbridge를 연결하면 로봇팔 카메라 영상 위에
 `/arm/supply/detections`의 bbox가 표시된다.
 `index.html`(MediaMTX)과 `index-compressed.html` 모두 지원한다.
-팔 패널의 영상은 기존 원본 카메라 스트림을 사용한다.
+MediaMTX는 기존 카메라 스트림을, 압축 영상 모드는 person 박스 표시 영상을 사용하며
+그 위에 보급품 박스를 함께 표시한다.
 이미 다른 launch에서 supply를 실행 중이라면 중복 실행하지 않는다.
 
 이 문서는 다음과 같이 컴퓨터를 2대로 나누어 사용하는 구성을 기준으로 한다.

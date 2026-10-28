@@ -139,7 +139,7 @@ sudo apt install ros-humble-compressed-image-transport
 | 메인 카메라 | `/drive/person/detecion` | `sensor_msgs/msg/CompressedImage` |
 | 서브 카메라 1 | `/left/person/detection` | `sensor_msgs/msg/CompressedImage` |
 | 서브 카메라 2 | `/right/person/detection` | `sensor_msgs/msg/CompressedImage` |
-| 로봇팔 카메라 | `/arm/camera/color/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` |
+| 로봇팔 카메라 | `/arm/person/detection` | `sensor_msgs/msg/CompressedImage` |
 
 CompressedImage 모드에서는 톱니바퀴의 ROS 토픽 목록에 카메라 4개가 추가되고,
 MediaMTX 주소 설정은 숨겨집니다. 컬러 JPEG/PNG/WebP만 표시하며
@@ -147,7 +147,7 @@ MediaMTX 주소 설정은 숨겨집니다. 컬러 JPEG/PNG/WebP만 표시하며
 rosbridge를 통과하므로 네트워크 사용량과 브라우저 CPU 부하는 기본 MediaMTX
 모드보다 큽니다.
 
-앞의 세 토픽은 `vision` 패키지의 person detector가 bbox를 그려서 발행하는
+위 네 토픽은 `vision` 패키지의 person detector가 bbox를 그려서 발행하는
 JPEG 영상이다. 다음 노드를 카메라 드라이버와 함께 실행해야 한다.
 
 ```bash
@@ -155,7 +155,10 @@ ros2 launch vision person_detection.launch.py
 ```
 
 기본 입력은 `/drive/camera/color/image_raw/compressed`,
-`/side/left/image_raw/compressed`, `/side/right/image_raw/compressed`이다.
+`/side/left/image_raw/compressed`, `/side/right/image_raw/compressed`,
+`/arm/camera/color/image_raw/compressed`이다. 로봇팔 추론은 기본 활성화된다.
+저장된 로봇팔 압축 영상 토픽이 기존 기본값이면 새 person 영상 토픽으로 자동 전환한다.
+사용자가 지정한 다른 토픽은 유지한다.
 
 ### Detection 바운딩박스 오버레이
 
@@ -164,7 +167,8 @@ ros2 launch vision person_detection.launch.py
 | Drive | `/person_detection/detections` |
 | LEFT | `/left/person/detections` |
 | Right | `/right/person/detections` |
-| 로봇팔 | `/arm/supply/detections` |
+| 로봇팔 (사람) | `/arm/person/detections` |
+| 로봇팔 (보급품) | `/arm/supply/detections` |
 
 Supply box 인식은 로봇의 `vision` 패키지에서 별도로 실행한다.
 
@@ -173,7 +177,7 @@ ros2 launch vision supply.launch.py
 ```
 
 팔 카메라의 RGB·정렬 Depth·CameraInfo와 팔 TF를 먼저 실행한다.
-로봇팔 패널은 원본 영상 위에 `/arm/supply/detections`
+로봇팔 패널은 카메라 영상 위에 `/arm/supply/detections`
 (`vision_msgs/msg/Detection2DArray`)의 bbox, 클래스명, 신뢰도를 표시한다.
 MediaMTX와 CompressedImage 모드 모두 지원하며 rosbridge 연결이 필요하다.
 유효 Depth/TF/파지 범위 조건을 통과하지 못해도 컬러 검출 bbox는 표시되지만,
@@ -249,42 +253,24 @@ ros2 topic pub -r 1 /DOLbot/collision std_msgs/msg/Bool "{data: false}"
 
 ## 8. 로봇팔 시각화 방식
 
-이 버전은 `/joint_states`의 `name`, `position`, `velocity`를 구독합니다.
+ResKU의 `tool_manipulator_bringup/launch/real_control.launch.py`와
+`tool_manipulator_description/urdf/tool_manipulator.urdf.xacro`를 기준으로 표시합니다.
 
-각 링크 끝점은 X-Z 평면 직렬 로봇팔로 계산합니다.
+- `/joint_states`: `base_joint`, `shoulder_joint`, `elbow_joint`, `wrist_pitch_joint`,
+  `wrist_roll_joint`, `wrist_yaw_joint`, `ee_joint`의 각도와 속도. 누락 값은 `--`입니다.
+- `/tf`, `/tf_static` (`tf2_msgs/msg/TFMessage`): 이동과 quaternion 회전을 합성하여
+  `arm_world` 기준 `base_actuator → base_link → shoulder_link → elbow_link →
+  wrist_link_pitch → wrist_link_roll → wrist_link_yaw → ee_actuator → tcp_link`를 그립니다.
+- 캔버스는 X-Z 투영이며 +X는 왼쪽, +Z는 위입니다. TCP 좌표에는 Y도 표시하고,
+  REACH는 `arm_world` 원점에서 TCP까지의 3차원 직선거리입니다.
+- 동적 TF 또는 관절 상태가 2초간 갱신되지 않으면 해당 표시를 수신 중단으로 전환합니다.
+  정적 TF는 연결 동안 유지하고 재연결 시 캐시를 초기화합니다.
+- 별도 `/arm/joint_pose_array` 발행기는 필요 없습니다. 설정의 링크 길이·회전 방향 등은
+  데모 평면 근사에만 적용됩니다. 실기 TF가 없으면 TF 대기 상태를 표시합니다.
 
-```text
-theta_i = theta_(i-1) + direction_i * q_i + offset_i
-x_i = x_(i-1) + L_i * cos(theta_i)
-z_i = z_(i-1) + L_i * sin(theta_i)
-```
-
-톱니바퀴 설정에서 다음 값을 실제 로봇팔에 맞게 입력해야 합니다.
-
-- 관절 순서: `shoulder_joint, elbow_joint, wrist_joint`
-- 링크 길이: `0.35, 0.30, 0.18`
-- 영점 오프셋: `90, 0, 0`
-- 회전 방향: `1, -1, 1`
-
-관절 순서를 비워두면 `JointState.name` 수신 순서를 그대로 사용합니다.
-
-### 정확도 제한
-
-`JointState`에는 관절각은 있지만 링크 길이, 관절축, 고정 변환 정보는 포함되지 않습니다.
-따라서 이 UI의 2D 계산은 설정한 링크 길이와 평면 회전축 가정에 의존합니다.
-
-실제 로봇팔이 3차원 다축 구조이거나 관절축이 서로 다르면 다음 구조가 더 정확합니다.
-
-```text
-/joint_states
-  -> robot_state_publisher + URDF
-  -> /tf, /tf_static
-  -> 관절 프레임의 실제 좌표를 웹 UI로 전달
-```
-
-또는 ROS 2 노드에서 TF를 조회해 각 관절의 위치를 `geometry_msgs/msg/PoseArray`로 발행하고,
-웹 UI는 계산 없이 해당 좌표를 그리는 방식이 가장 단순하고 안정적입니다.
-
+런처의 `Arm_TF`와 `ROS_Bridge`를 실행하고 웹 UI를 연결합니다. rosbridge에서 `/tf_static`의
+TRANSIENT_LOCAL 데이터를 수신할 수 있어야 합니다. 팔이 표시되지 않으면 위 체인의
+고정 TF와 동적 TF가 모두 전달되는지 확인합니다. ROS 패키지 빌드는 필요 없습니다.
 
 ## 9. 테마 변경
 

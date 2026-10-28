@@ -1032,6 +1032,34 @@ body[data-camera-transport="ros-compressed"] .camera-stage.has-signal .compresse
   margin-bottom: 5px;
 }
 
+.joint-state-section--overlay > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.joint-state-section--overlay > summary::-webkit-details-marker {
+  display: none;
+}
+
+.joint-state-section--overlay > summary > span:first-child::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.joint-state-section--overlay[open] > summary > span:first-child::before {
+  content: "▾";
+}
+
+.joint-state-section--overlay:not([open]) > summary {
+  margin-bottom: 0;
+}
+
+.joint-state-section--overlay > summary:focus-visible {
+  outline: 2px solid var(--accent, #4da3ff);
+  outline-offset: 3px;
+}
+
 .joint-state-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2777,4 +2805,19 @@ body.dashboard-row-resizing * {
   min-height: 0;
   margin: 0;
   overflow: hidden;
+}
+
+/* ResKU TF source and 3D TCP coordinates share the arm footer. */
+.arm-metrics {
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+#endEffectorPosition {
+  flex-basis: 100%;
+  order: 1;
+}
+
+.joint-state-list {
+  max-height: 100px;
 }

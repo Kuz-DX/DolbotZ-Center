@@ -24,22 +24,39 @@ web_ui_topics:
     type: "sensor_msgs/msg/JointState"
     stale_ms: 2000
     match: "direct"
-    publisher: "rmd_joint_state_bridge 또는 joint_state_broadcaster"
-    source: "src/arm/rmd_joint_state_bridge/src/joint_state_bridge_node.cpp"
+    publisher: "joint_state_broadcaster (ResKU real_control.launch.py)"
+    source: "~/ResKU/src/arm/tool_manipulator_bringup/launch/real_control.launch.py"
     ui_outputs:
-      - "2D 로봇팔 순기구학"
-      - "관절 이름/각도/속도"
-      - "엔드이펙터 X-Z 위치"
+      - "7개 관절 이름/각도/속도 (미수신 값 --)"
     expected_joint_names:
       - "base_joint"
       - "shoulder_joint"
       - "elbow_joint"
-      - "wrist_joint"
-      - "gripper_joint"
-    planar_visualization_joints:
-      - "shoulder_joint"
-      - "elbow_joint"
-      - "wrist_joint"
+      - "wrist_pitch_joint"
+      - "wrist_roll_joint"
+      - "wrist_yaw_joint"
+      - "ee_joint"
+
+  armTf:
+    label: "로봇팔 TF"
+    name: "/tf"
+    type: "tf2_msgs/msg/TFMessage"
+    stale_ms: 2000
+    match: "direct"
+    publisher: "robot_state_publisher"
+    reference_frame: "arm_world"
+    tip_frame: "tcp_link"
+    ui_outputs:
+      - "TF 체인 X-Z 투영"
+      - "TCP X/Y/Z 및 3차원 도달거리"
+
+  armTfStatic:
+    label: "로봇팔 고정 TF"
+    name: "/tf_static"
+    type: "tf2_msgs/msg/TFMessage"
+    match: "direct"
+    publisher: "robot_state_publisher"
+    cache: "연결 동안 유지, 재연결 시 초기화"
 
   gripperHoldFinished:
     label: "MANUAL_EE 파지 완료"
@@ -268,14 +285,14 @@ compressed_camera_topics:
     input_topic: "/side/right/image_raw/compressed"
 
   armCamera:
-    label: "로봇팔 카메라 / 팔 D455 컬러"
-    name: "/arm/camera/color/image_raw/compressed"
+    label: "로봇팔 카메라 / person bbox"
+    name: "/arm/person/detection"
     type: "sensor_msgs/msg/CompressedImage"
     stale_ms: 3000
     match: "direct"
-    publisher: "realsense2_camera + compressed_image_transport (arm_cam.launch.py)"
-    source: "src/dolbotz/config/realsense_cameras.yaml"
-    configured_profile: "640x480@15"
+    publisher: "vision/person_detection"
+    source: "src/vision/vision/person_detection.py"
+    input_topic: "/arm/camera/color/image_raw/compressed"
 
 detection_overlay_topics:
   message_type: "vision_msgs/Detection2DArray 또는 std_msgs/String JSON"
@@ -298,6 +315,7 @@ detection_overlay_topics:
   arm:
     image_topic: "/arm/camera/color/image_raw/compressed"
     detections:
+      - "/arm/person/detections"
       - "/arm/supply/detections"
 
 camera_transport_profiles:

@@ -284,7 +284,7 @@
           <div class="bridge-controls">
             <label class="bridge-field">
               <span>ROSBRIDGE</span>
-              <input id="rosbridgeUrl" type="text" value="ws://localhost:9090" spellcheck="false" />
+              <input id="rosbridgeUrl" type="text" value="ws://192.168.0.100:9090" spellcheck="false" />
             </label>
             <button id="connectButton" class="button button--primary" type="button">연결</button>
             <button id="disconnectButton" class="button" type="button" disabled>해제</button>
@@ -312,7 +312,7 @@
 
           <div class="arm-stage">
             <canvas id="armKinematicsCanvas"></canvas>
-            <div id="armPlaceholder" class="canvas-placeholder">/joint_states 토픽 대기 중</div>
+            <div id="armPlaceholder" class="canvas-placeholder">로봇팔 /tf · /tf_static 대기 중</div>
             <div id="gripperHoldStatus" class="gripper-hold-status hidden" role="status">
               <span aria-hidden="true"></span>파지 성공
             </div>
@@ -324,17 +324,19 @@
               <span class="arm-operation-status__mark" aria-hidden="true"></span>
               <strong id="armOperationStatusText"></strong>
             </div>
-            <section class="joint-state-section joint-state-section--overlay" aria-label="로봇팔 관절 상태">
-              <div class="section-title">
+            <details class="joint-state-section joint-state-section--overlay" aria-label="로봇팔 관절 상태" open>
+              <summary class="section-title">
                 <span>JOINT STATE</span>
                 <span id="armTargetPosition">TARGET X -- / Z --</span>
-              </div>
+              </summary>
               <div id="jointStateList" class="joint-state-list">
                 <div class="joint-state-empty">관절 데이터 미수신</div>
               </div>
-            </section>
+            </details>
             <div class="arm-metrics">
+              <span id="armTfStatus">TF 대기 / 수신 중단</span>
               <span>PLANE <strong>X-Z</strong></span>
+              <span id="endEffectorPosition">TCP X -- / Y -- / Z --</span>
               <span>JOINTS <strong id="armJointCount">0</strong></span>
               <span>REACH <strong id="armReach">0.00 m</strong></span>
             </div>
@@ -439,7 +441,7 @@
         <div class="settings-subsection-title">
           <div>
             <strong>2D 로봇팔 모델</strong>
-            <small>JointState 각도를 X-Z 평면의 직렬 링크로 변환</small>
+            <small>데모용 평면 근사 설정 · 실기 표시는 ResKU TF 사용</small>
           </div>
         </div>
         <div id="armModelSettingsGrid" class="arm-model-settings-grid"></div>
